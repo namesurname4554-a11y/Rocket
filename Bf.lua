@@ -1,265 +1,332 @@
--- ROCKET Blox Fruits Menu v2
--- Delta / MuMu Android 15+
--- Обновление: фикс ON/OFF, авто-квест по лвл, авто-фарм по квесту, оружие, свёртка, дизайн
+-- Banan Hub v3 | Blox Fruits | Delta / Android
+-- Вкладки, фиксы, реальная атака, авто-квест
 
 if game.PlaceId ~= 2753915549 and game.PlaceId ~= 4442272183 and game.PlaceId ~= 7449423635 then
-    return warn("[ROCKET] Это не Blox Fruits!")
+    return warn("[Banan Hub] Not Blox Fruits!")
 end
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
+local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
-local HttpService = game:GetService("HttpService")
 local LP = Players.LocalPlayer
 
 -- ===== STATE =====
-local State = {
-    AutoFarm = false,
-    AutoQuest = false,
-    Speed = false,
-    ESP = false,
-    Noclip = false,
-    InfJump = false,
-    FullBright = false,
-    AutoCollect = false,
-    AutoHaki = false,
-    Fly = false,
-    Weapon = "Melee",
-    MenuOpen = true,
-    Title = "ROCKET",
-}
-
-local MENU_TITLES = {
-    "ROCKET", "Blox Fruits", "Fruit Hub", "Delta Menu",
-    "Sea Beast", "Auto Farm", "OP Script", "Level Up",
-    "Pirate Hub", "Grand Line"
+local S = {
+    -- Farm
+    LevelFarm=false, MasteryFarm=false, AutoFarm=false, AutoQuest=false,
+    AutoRaid=false, AutoBoss=false, BossName="", AutoFish=false, AutoCollect=false,
+    Weapon="Melee", QuestMobs={},
+    -- Combat
+    AutoHaki=false, AutoSword=false, AutoFruitSniper=false,
+    -- Movement
+    Noclip=false, InfJump=false, Fly=false,
+    -- Utility
+    AntiAFK=false, ServerHop=false, FullBright=false,
+    MenuOpen=true,
 }
 
 -- ===== GUI =====
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "ROCKET_Menu_v2"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.IgnoreGuiInset = true
-ScreenGui.Parent = LP:WaitForChild("PlayerGui")
+local Gui = Instance.new("ScreenGui")
+Gui.Name="BananHub"
+Gui.ResetOnSpawn=false
+Gui.IgnoreGuiInset=true
+Gui.Parent=LP:WaitForChild("PlayerGui")
 
--- Главный фрейм
-local Main = Instance.new("Frame")
-Main.Size = UDim2.new(0, 300, 0, 480)
-Main.Position = UDim2.new(0, 20, 0.15, 0)
-Main.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
-Main.BorderSizePixel = 0
-Main.Active = true
-Main.Draggable = true
-Main.Parent = ScreenGui
-Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 12)
-local MainStroke = Instance.new("UIStroke", Main)
-MainStroke.Color = Color3.fromRGB(80, 120, 255)
-MainStroke.Thickness = 1.5
+local Main=Instance.new("Frame")
+Main.Size=UDim2.new(0,520,0,360)
+Main.Position=UDim2.new(0.5,-260,0.5,-180)
+Main.BackgroundColor3=Color3.fromRGB(15,15,22)
+Main.BorderSizePixel=0
+Main.Active=true Main.Draggable=true
+Main.Parent=Gui
+Instance.new("UICorner",Main).CornerRadius=UDim.new(0,14)
+local st=Instance.new("UIStroke",Main) st.Color=Color3.fromRGB(255,200,0) st.Thickness=1.5
 
--- Заголовок
-local Header = Instance.new("Frame")
-Header.Size = UDim2.new(1, 0, 0, 40)
-Header.BackgroundColor3 = Color3.fromRGB(28, 28, 40)
-Header.BorderSizePixel = 0
-Header.Parent = Main
-Instance.new("UICorner", Header).CornerRadius = UDim.new(0, 12)
+-- Header
+local Head=Instance.new("Frame")
+Head.Size=UDim2.new(1,0,0,44)
+Head.BackgroundColor3=Color3.fromRGB(25,25,35)
+Head.BorderSizePixel=0
+Head.Parent=Main
+Instance.new("UICorner",Head).CornerRadius=UDim.new(0,14)
 
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -50, 1, 0)
-Title.Position = UDim2.new(0, 12, 0, 0)
-Title.BackgroundTransparency = 1
-Title.Text = State.Title .. " | Blox Fruits v2"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.Font = Enum.Font.GothamBold
-Title.TextSize = 15
-Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Parent = Header
+local HeadGrad=Instance.new("UIGradient",Head)
+HeadGrad.Color=ColorSequence.new{
+    ColorSequenceKeypoint.new(0,Color3.fromRGB(255,200,0)),
+    ColorSequenceKeypoint.new(1,Color3.fromRGB(255,140,0))
+}
+HeadGrad.Rotation=0
 
--- Кнопка свернуть
-local MinBtn = Instance.new("TextButton")
-MinBtn.Size = UDim2.new(0, 30, 0, 30)
-MinBtn.Position = UDim2.new(1, -70, 0, 5)
-MinBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-MinBtn.Text = "—"
-MinBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-MinBtn.Font = Enum.Font.GothamBold
-MinBtn.TextSize = 14
-MinBtn.Parent = Header
-Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0, 6)
+local Title=Instance.new("TextLabel")
+Title.Size=UDim2.new(1,-100,1,0)
+Title.Position=UDim2.new(0,16,0,0)
+Title.BackgroundTransparency=1
+Title.Text="🍌 Banan Hub | Blox Fruits"
+Title.TextColor3=Color3.fromRGB(20,20,20)
+Title.Font=Enum.Font.GothamBold
+Title.TextSize=16
+Title.TextXAlignment=Enum.TextXAlignment.Left
+Title.Parent=Head
 
--- Кнопка закрыть (сворачивает в кружок)
-local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size = UDim2.new(0, 30, 0, 30)
-CloseBtn.Position = UDim2.new(1, -35, 0, 5)
-CloseBtn.BackgroundColor3 = Color3.fromRGB(140, 40, 40)
-CloseBtn.Text = "X"
-CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-CloseBtn.Font = Enum.Font.GothamBold
-CloseBtn.TextSize = 14
-CloseBtn.Parent = Header
-Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 6)
+local CloseBtn=Instance.new("TextButton")
+CloseBtn.Size=UDim2.new(0,30,0,30)
+CloseBtn.Position=UDim2.new(1,-38,0,7)
+CloseBtn.BackgroundColor3=Color3.fromRGB(40,40,55)
+CloseBtn.Text="X"
+CloseBtn.TextColor3=Color3.fromRGB(255,255,255)
+CloseBtn.Font=Enum.Font.GothamBold
+CloseBtn.TextSize=14
+CloseBtn.Parent=Head
+Instance.new("UICorner",CloseBtn).CornerRadius=UDim.new(0,6)
 
--- Круглая кнопка (появляется при закрытии)
-local Bubble = Instance.new("TextButton")
-Bubble.Size = UDim2.new(0, 50, 0, 50)
-Bubble.Position = UDim2.new(0, 20, 0.3, 0)
-Bubble.BackgroundColor3 = Color3.fromRGB(40, 90, 220)
-Bubble.Text = "R"
-Bubble.TextColor3 = Color3.fromRGB(255, 255, 255)
-Bubble.Font = Enum.Font.GothamBold
-Bubble.TextSize = 22
-Bubble.Visible = false
-Bubble.Active = true
-Bubble.Draggable = true
-Bubble.Parent = ScreenGui
-Instance.new("UICorner", Bubble).CornerRadius = UDim.new(1, 0)
+local Bubble=Instance.new("TextButton")
+Bubble.Size=UDim2.new(0,54,0,54)
+Bubble.Position=UDim2.new(0,20,0.3,0)
+Bubble.BackgroundColor3=Color3.fromRGB(255,180,0)
+Bubble.Text="🍌"
+Bubble.TextColor3=Color3.fromRGB(20,20,20)
+Bubble.Font=Enum.Font.GothamBold
+Bubble.TextSize=24
+Bubble.Visible=false
+Bubble.Draggable=true
+Bubble.Parent=Gui
+Instance.new("UICorner",Bubble).CornerRadius=UDim.new(1,0)
 
--- Скролл-контейнер для кнопок
-local Scroll = Instance.new("ScrollingFrame")
-Scroll.Size = UDim2.new(1, -16, 1, -50)
-Scroll.Position = UDim2.new(0, 8, 0, 45)
-Scroll.BackgroundTransparency = 1
-Scroll.BorderSizePixel = 0
-Scroll.ScrollBarThickness = 4
-Scroll.ScrollBarImageColor3 = Color3.fromRGB(80, 120, 255)
-Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-Scroll.Parent = Main
+CloseBtn.MouseButton1Click:Connect(function() Main.Visible=false Bubble.Visible=true end)
+Bubble.MouseButton1Click:Connect(function() Main.Visible=true Bubble.Visible=false end)
 
-local UIList = Instance.new("UIListLayout")
-UIList.SortOrder = Enum.SortOrder.LayoutOrder
-UIList.Padding = UDim.new(0, 6)
-UIList.Parent = Scroll
+-- Sidebar (вкладки)
+local Side=Instance.new("Frame")
+Side.Size=UDim2.new(0,110,1,-50)
+Side.Position=UDim2.new(0,6,0,46)
+Side.BackgroundColor3=Color3.fromRGB(22,22,30)
+Side.BorderSizePixel=0
+Side.Parent=Main
+Instance.new("UICorner",Side).CornerRadius=UDim.new(0,10)
 
--- ===== СВЁРТКА =====
-CloseBtn.MouseButton1Click:Connect(function()
-    Main.Visible = false
-    Bubble.Visible = true
-end)
+local SideList=Instance.new("UIListLayout")
+SideList.Padding=UDim.new(0,4)
+SideList.SortOrder=Enum.SortOrder.LayoutOrder
+SideList.Parent=Side
+Instance.new("UIPadding",Side).PaddingTop=UDim.new(0,6)
 
-Bubble.MouseButton1Click:Connect(function()
-    Main.Visible = true
-    Bubble.Visible = false
-end)
+-- Content area
+local Content=Instance.new("Frame")
+Content.Size=UDim2.new(1,-130,1,-56)
+Content.Position=UDim2.new(0,122,0,52)
+Content.BackgroundTransparency=1
+Content.Parent=Main
 
-MinBtn.MouseButton1Click:Connect(function()
-    if Scroll.Visible then
-        Scroll.Visible = false
-        Main.Size = UDim2.new(0, 300, 0, 45)
-    else
-        Scroll.Visible = true
-        Main.Size = UDim2.new(0, 300, 0, 480)
-    end
-end)
+local pages={}
+local activePage=nil
 
--- ===== ХЕЛПЕРЫ =====
-local function notify(text)
-    local msg = Instance.new("TextLabel")
-    msg.Size = UDim2.new(0, 220, 0, 30)
-    msg.Position = UDim2.new(1, -240, 0, 50)
-    msg.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
-    msg.Text = "[ROCKET] " .. text
-    msg.TextColor3 = Color3.fromRGB(255, 255, 255)
-    msg.Font = Enum.Font.Gotham
-    msg.TextSize = 12
-    msg.Parent = ScreenGui
-    Instance.new("UICorner", msg).CornerRadius = UDim.new(0, 6)
-    task.delay(2, function()
-        if msg then msg:Destroy() end
+local function selectTab(name)
+    for n,p in pairs(pages) do p.Visible=(n==name) end
+    activePage=name
+end
+
+local function makeTab(name, order)
+    local t=Instance.new("TextButton")
+    t.Size=UDim2.new(1,-12,0,34)
+    t.Position=UDim2.new(0,6,0,0)
+    t.BackgroundColor3=Color3.fromRGB(35,35,48)
+    t.Text=name
+    t.TextColor3=Color3.fromRGB(220,220,235)
+    t.Font=Enum.Font.GothamMedium
+    t.TextSize=13
+    t.LayoutOrder=order
+    t.Parent=Side
+    Instance.new("UICorner",t).CornerRadius=UDim.new(0,7)
+    t.MouseButton1Click:Connect(function()
+        selectTab(name)
+        for _,c in pairs(Side:GetChildren()) do
+            if c:IsA("TextButton") then
+                c.BackgroundColor3=Color3.fromRGB(35,35,48)
+                c.TextColor3=Color3.fromRGB(220,220,235)
+            end
+        end
+        t.BackgroundColor3=Color3.fromRGB(255,180,0)
+        t.TextColor3=Color3.fromRGB(20,20,20)
     end)
+    local p=Instance.new("ScrollingFrame")
+    p.Size=UDim2.new(1,0,1,0)
+    p.BackgroundTransparency=1
+    p.BorderSizePixel=0
+    p.ScrollBarThickness=4
+    p.ScrollBarImageColor3=Color3.fromRGB(255,180,0)
+    p.CanvasSize=UDim2.new(0,0,0,0)
+    p.AutomaticCanvasSize=Enum.AutomaticSize.Y
+    p.Visible=false
+    p.Parent=Content
+    local l=Instance.new("UIListLayout")
+    l.Padding=UDim.new(0,6)
+    l.SortOrder=Enum.SortOrder.LayoutOrder
+    l.Parent=p
+    pages[name]=p
+    return p
 end
 
-local function getChar()
-    return LP.Character or LP.CharacterAdded:Wait()
+-- ===== HELPERS =====
+local function notify(text)
+    local m=Instance.new("TextLabel")
+    m.Size=UDim2.new(0,240,0,30)
+    m.Position=UDim2.new(1,-260,0,50)
+    m.BackgroundColor3=Color3.fromRGB(30,30,45)
+    m.Text="🍌 "..text
+    m.TextColor3=Color3.fromRGB(255,255,255)
+    m.Font=Enum.Font.Gotham
+    m.TextSize=12
+    m.Parent=Gui
+    Instance.new("UICorner",m).CornerRadius=UDim.new(0,6)
+    task.delay(2.5,function() if m then m:Destroy() end end)
 end
 
-local function getHRP()
-    local c = getChar()
-    return c:FindFirstChild("HumanoidRootPart")
+local function char() return LP.Character or LP.CharacterAdded:Wait() end
+local function hrp() local c=char() return c:FindFirstChild("HumanoidRootPart") end
+local function hum() local c=char() return c:FindFirstChildOfClass("Humanoid") end
+local function tween(pos,spd)
+    local h=hrp() if not h then return end
+    TweenService:Create(h,TweenInfo.new(spd or 0.25,Enum.EasingStyle.Linear),{CFrame=CFrame.new(pos)}):Play()
 end
 
-local function tweenTo(pos, speed)
-    local hrp = getHRP()
-    if not hrp then return end
-    local t = TweenService:Create(hrp, TweenInfo.new(speed or 0.3, Enum.EasingStyle.Linear), {CFrame = CFrame.new(pos)})
-    t:Play()
+-- Атака tool'ом
+local function getWeapon()
+    local c=char() if not c then return nil end
+    local best=nil
+    if S.Weapon=="Melee" then
+        for _,t in pairs(c:GetChildren()) do
+            if t:IsA("Tool") and t:FindFirstChild("Handle") then
+                if not best or (t.Name:lower():find("sword") and not best.Name:lower():find("sword")) then best=t end
+            end
+        end
+    else
+        for _,t in pairs(c:GetChildren()) do
+            if t:IsA("Tool") and t.Name:lower():find(S.Weapon:lower()) then best=t break end
+        end
+    end
+    return best
 end
 
-local function getNearestMob(filterQuest)
-    local hrp = getHRP()
-    if not hrp then return nil end
-    local closest, dist = nil, math.huge
-    local enemies = workspace:FindFirstChild("Enemies")
+local function realAttack(mob)
+    if not mob or not mob:FindFirstChild("Humanoid") then return end
+    local h=hrp() if not h then return end
+    -- телепорт вплотную
+    h.CFrame=mob.HumanoidRootPart.CFrame*CFrame.new(0,0,3)
+    local w=getWeapon()
+    if w then
+        pcall(function()
+            w.Parent=char()
+            w:Activate()
+        end)
+    end
+end
+
+local function findMob(filterQuest)
+    local h=hrp() if not h then return nil end
+    local enemies=workspace:FindFirstChild("Enemies")
     if not enemies then return nil end
-    for _, v in pairs(enemies:GetChildren()) do
-        if v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 and v:FindFirstChild("HumanoidRootPart") then
-            local ok = true
-            if filterQuest and _G.QuestMobs and #_G.QuestMobs > 0 then
-                ok = false
-                for _, name in pairs(_G.QuestMobs) do
-                    if v.Name:lower():find(name:lower()) then ok = true break end
+    local best,bd=nil,math.huge
+    for _,v in pairs(enemies:GetChildren()) do
+        if v:FindFirstChild("Humanoid") and v.Humanoid.Health>0 and v:FindFirstChild("HumanoidRootPart") then
+            local ok=true
+            if filterQuest and #S.QuestMobs>0 then
+                ok=false
+                for _,n in pairs(S.QuestMobs) do
+                    if v.Name:lower():find(n:lower()) then ok=true break end
                 end
             end
             if ok then
-                local d = (v.HumanoidRootPart.Position - hrp.Position).Magnitude
-                if d < dist then dist = d; closest = v end
-            end
-        end
-    end
-    return closest
-end
-
-local function attack(mob)
-    if not mob or not mob:FindFirstChild("Humanoid") then return end
-    -- Простая эмуляция атаки: подходим вплотную + дёргаем инструмент
-    local tool = nil
-    if State.Weapon == "Melee" then
-        tool = getChar():FindFirstChildOfClass("Tool")
-    else
-        for _, t in pairs(getChar():GetChildren()) do
-            if t:IsA("Tool") then
-                if t.Name:lower():find(State.Weapon:lower()) then tool = t break end
-            end
-        end
-    end
-    if tool then
-        tool.Parent = getChar()
-        tool:Activate()
-    end
-    mob.Humanoid.Health = mob.Humanoid.Health - (tool and 15 or 5)
-end
-
--- ===== AUTO QUEST =====
-local function findQuestNPC()
-    local myLevel = LP.Data and LP.Data.Level and LP.Data.Level.Value or 1
-    local best, bestDiff = nil, math.huge
-    for _, v in pairs(workspace:GetDescendants()) do
-        if v:IsA("Model") and v:FindFirstChild("Humanoid") and v:FindFirstChild("Head") then
-            local n = v.Name:lower()
-            if n:find("quest") or n:find("giver") or n:find("boss") then
-                local npcLevel = 1
-                local lvlVal = v:FindFirstChild("Level") or (v:FindFirstChild("Humanoid") and v.Humanoid:FindFirstChild("Level"))
-                if lvlVal and lvlVal.Value then npcLevel = lvlVal.Value end
-                local diff = math.abs(npcLevel - myLevel)
-                if diff < bestDiff then bestDiff = diff; best = v end
+                local d=(v.HumanoidRootPart.Position-h.Position).Magnitude
+                if d<bd then bd=d best=v end
             end
         end
     end
     return best
 end
 
+-- ===== LEVEL DATA =====
+local function myLevel()
+    local ok,lv=pcall(function()
+        return LP.Data.Level.Value
+    end)
+    if ok and lv then return lv end
+    return 1
+end
+
+-- ===== QUEST =====
+local function getQuestNPC()
+    local myLv=myLevel()
+    local best,bd=nil,math.huge
+    for _,v in pairs(workspace:GetDescendants()) do
+        if v:IsA("Model") and v:FindFirstChild("Humanoid") and v:FindFirstChild("Head") then
+            local n=v.Name:lower()
+            if n:find("quest") or n:find("giver") or n:find("boss") or n:find("elder") or n:find("captain") then
+                local npcLv=1
+                local lvObj=v:FindFirstChild("Level") or (v:FindFirstChild("Humanoid") and v.Humanoid:FindFirstChild("Level"))
+                if lvObj and lvObj.Value then npcLv=lvObj.Value end
+                local diff=math.abs(npcLv-myLv)
+                if diff<bd then bd=diff best=v end
+            end
+        end
+    end
+    return best
+end
+
+local function takeQuest(npc)
+    if not npc then return end
+    for _,d in pairs(npc:GetDescendants()) do
+        if d:IsA("ProximityPrompt") then
+            pcall(function() fireproximityprompt(d) end)
+        elseif d:IsA("ClickDetector") then
+            pcall(function() fireclickdetector(d) end)
+        end
+    end
+end
+
+-- ===== LOOPS =====
+task.spawn(function()
+    while task.wait(0.15) do
+        if (S.AutoFarm or S.LevelFarm or S.MasteryFarm) and hrp() then
+            local mob=findMob(S.AutoFarm)
+            if mob then realAttack(mob) end
+        end
+    end
+end)
+
 task.spawn(function()
     while task.wait(0.5) do
-        if State.AutoQuest then
-            local npc = findQuestNPC()
+        if S.AutoQuest then
+            local npc=getQuestNPC()
             if npc and npc:FindFirstChild("Head") then
-                tweenTo(npc.Head.Position + Vector3.new(0, 3, 0), 0.5)
-                task.wait(0.4)
-                -- Попытка взять квест через ProximityPrompt
-                for _, p in pairs(npc:GetDescendants()) do
-                    if p:IsA("ProximityPrompt") then
-                        fireproximityprompt(p)
+                tween(npc.Head.Position+Vector3.new(0,3,0),0.4)
+                task.wait(0.3)
+                takeQuest(npc)
+            end
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(1) do
+        if S.AutoRaid then
+            -- placeholder: ищет Chip и Raid NPC, кидает в чат /raid
+            pcall(function()
+                local args={"\/raid"}
+                game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer(unpack(args))
+            end)
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(0.5) do
+        if S.AutoBoss and S.BossName~="" then
+            local enemies=workspace:FindFirstChild("Enemies")
+            if enemies then
+                for _,v in pairs(enemies:GetChildren()) do
+                    if v.Name:lower():find(S.BossName:lower()) and v:FindFirstChild("HumanoidRootPart") then
+                        realAttack(v)
                         break
                     end
                 end
@@ -268,206 +335,216 @@ task.spawn(function()
     end
 end)
 
--- ===== AUTO FARM =====
 task.spawn(function()
-    while task.wait(0.15) do
-        if State.AutoFarm and getHRP() then
-            local mob = getNearestMob(true)
-            if mob then
-                tweenTo(mob.HumanoidRootPart.Position + Vector3.new(0, 4, 0), 0.2)
-                task.wait(0.12)
-                attack(mob)
+    while task.wait(0.4) do
+        if S.AutoCollect and hrp() then
+            for _,v in pairs(workspace:GetChildren()) do
+                if v.Name=="Fruit" or v.Name=="Drop" or (v:IsA("Tool") and v:FindFirstChild("Handle")) then
+                    local h=v:FindFirstChild("Handle")
+                    if h then tween(h.Position+Vector3.new(0,3,0),0.3) end
+                end
             end
         end
     end
 end)
 
--- ===== AUTO COLLECT =====
 task.spawn(function()
-    while task.wait(0.5) do
-        if State.AutoCollect and getHRP() then
-            for _, v in pairs(workspace:GetChildren()) do
-                if v.Name == "Fruit" or v.Name == "Drop" or v:FindFirstChild("Handle") and v:IsA("Tool") then
-                    if v:FindFirstChild("Handle") then
-                        tweenTo(v.Handle.Position + Vector3.new(0, 3, 0), 0.4)
+    while task.wait(3) do
+        if S.AutoHaki then
+            pcall(function()
+                for _,t in pairs(LP.Backpack:GetChildren()) do
+                    if t.Name:lower():find("haki") or t.Name:lower():find("buso") or t.Name:lower():find("ken") then
+                        t.Parent=LP.Character
                     end
                 end
+            end)
+        end
+        if S.AutoSword then
+            pcall(function()
+                for _,t in pairs(LP.Backpack:GetChildren()) do
+                    if t.Name:lower():find("sword") or t.Name:lower():find("katana") or t.Name:lower():find("blade") then
+                        t.Parent=LP.Character
+                    end
+                end
+            end)
+        end
+        if S.AutoFruitSniper and hrp() then
+            for _,v in pairs(workspace:GetChildren()) do
+                if v.Name=="Fruit" and v:FindFirstChild("Handle") then
+                    tween(v.Handle.Position+Vector3.new(0,3,0),0.3)
+                    task.wait(0.3)
+                    pcall(function() firetouchinterest(hrp(),v.Handle,0) firetouchinterest(hrp(),v.Handle,1) end)
+                end
             end
         end
     end
 end)
 
--- ===== ESP =====
-RunService.RenderStepped:Connect(function()
-    local enemies = workspace:FindFirstChild("Enemies")
-    if not enemies then return end
-    for _, v in pairs(enemies:GetChildren()) do
-        if v:FindFirstChild("HumanoidRootPart") and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
-            if State.ESP then
-                local bb = v:FindFirstChild("ROCKET_ESP")
-                if not bb then
-                    bb = Instance.new("BillboardGui", v)
-                    bb.Name = "ROCKET_ESP"
-                    bb.Size = UDim2.new(0, 110, 0, 30)
-                    bb.AlwaysOnTop = true
-                    bb.Adornee = v.HumanoidRootPart
-                    local txt = Instance.new("TextLabel", bb)
-                    txt.Size = UDim2.new(1, 0, 1, 0)
-                    txt.BackgroundTransparency = 1
-                    txt.TextColor3 = Color3.fromRGB(255, 70, 70)
-                    txt.TextStrokeTransparency = 0
-                    txt.Font = Enum.Font.GothamBold
-                    txt.TextSize = 13
-                end
-                local txt = bb:FindFirstChildOfClass("TextLabel")
-                if txt then
-                    txt.Text = v.Name .. " | " .. math.floor(v.Humanoid.Health) .. "/" .. math.floor(v.Humanoid.MaxHealth)
-                end
-            else
-                local old = v:FindFirstChild("ROCKET_ESP")
-                if old then old:Destroy() end
-            end
-        end
-    end
-end)
-
--- ===== SPEED / NOCLIP / INF JUMP / FULLBRIGHT / FLY / HAKI =====
+-- Movement & misc
 RunService.Stepped:Connect(function()
-    local char = LP.Character
-    if not char then return end
-    local hum = char:FindFirstChild("Humanoid")
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-
-    if hum and State.Speed then hum.WalkSpeed = 80 elseif hum then hum.WalkSpeed = 16 end
-
-    if hrp then
-        if State.Noclip then
-            for _, p in pairs(char:GetDescendants()) do
-                if p:IsA("BasePart") then p.CanCollide = false end
-            end
-        end
-        if State.Fly then
-            hrp.Velocity = Vector3.new(0, 50, 0)
+    local c=LP.Character if not c then return end
+    local h=c:FindFirstChild("HumanoidRootPart")
+    if S.Noclip then
+        for _,p in pairs(c:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide=false end
         end
     end
+    if S.Fly and h then h.Velocity=Vector3.new(0,50,0) end
 end)
 
-UserInputService.JumpRequest:Connect(function()
-    if State.InfJump then
-        local hum = getChar():FindFirstChildOfClass("Humanoid")
-        if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+UIS.JumpRequest:Connect(function()
+    if S.InfJump then
+        local h=hum() if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
     end
 end)
 
 task.spawn(function()
     while task.wait(2) do
-        if State.FullBright then
-            game:GetService("Lighting").Brightness = 3
-            game:GetService("Lighting").ClockTime = 12
-            game:GetService("Lighting").FogEnd = 100000
-            game:GetService("Lighting").GlobalShadows = false
+        if S.FullBright then
+            local L=game:GetService("Lighting")
+            L.Brightness=3 L.ClockTime=12 L.FogEnd=1e5 L.GlobalShadows=false
         end
-        if State.AutoHaki then
+        if S.AntiAFK then
             pcall(function()
-                for _, t in pairs(LP.Backpack:GetChildren()) do
-                    if t.Name:lower():find("haki") or t.Name:lower():find("buso") then
-                        t.Parent = LP.Character
-                    end
-                end
+                game:GetService("VirtualUser"):CaptureController()
+                game:GetService("VirtualUser"):Button1Down(Vector2.new(0,0))
             end)
         end
     end
 end)
 
--- ===== UI ЭЛЕМЕНТЫ =====
-local function makeButton(text, callback)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, 0, 0, 38)
-    btn.BackgroundColor3 = Color3.fromRGB(38, 38, 55)
-    btn.Text = text
-    btn.TextColor3 = Color3.fromRGB(235, 235, 245)
-    btn.Font = Enum.Font.GothamMedium
-    btn.TextSize = 14
-    btn.AutoButtonColor = true
-    btn.Parent = Scroll
-    local c = Instance.new("UICorner", btn)
-    c.CornerRadius = UDim.new(0, 8)
-    local stroke = Instance.new("UIStroke", btn)
-    stroke.Color = Color3.fromRGB(70, 70, 100)
-    stroke.Thickness = 1
-
-    btn.MouseEnter:Connect(function()
-        TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(55, 55, 80)}):Play()
-    end)
-    btn.MouseLeave:Connect(function()
-        if btn.BackgroundColor3 ~= Color3.fromRGB(0, 140, 60) then
-            TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(38, 38, 55)}):Play()
-        end
-    end)
-    btn.MouseButton1Click:Connect(callback)
-    return btn
+-- ===== UI BUILDERS =====
+local function btn(parent,text,cb)
+    local b=Instance.new("TextButton")
+    b.Size=UDim2.new(1,-8,0,36)
+    b.BackgroundColor3=Color3.fromRGB(38,38,55)
+    b.Text=text
+    b.TextColor3=Color3.fromRGB(235,235,245)
+    b.Font=Enum.Font.GothamMedium
+    b.TextSize=13
+    b.Parent=parent
+    Instance.new("UICorner",b).CornerRadius=UDim.new(0,8)
+    local s=Instance.new("UIStroke",b) s.Color=Color3.fromRGB(70,70,100)
+    b.MouseButton1Click:Connect(cb)
+    return b
 end
 
--- Универсальный toggle
-local function toggleButton(label, key, extra)
-    local btn = makeButton(label .. ": OFF", function()
-        State[key] = not State[key]
-        btn.Text = label .. ": " .. (State[key] and "ON" or "OFF")
-        btn.BackgroundColor3 = State[key] and Color3.fromRGB(0, 140, 60) or Color3.fromRGB(38, 38, 55)
-        if extra then extra(State[key]) end
+local function toggle(parent,label,key,cb)
+    local b=btn(parent,label..": OFF",function()
+        S[key]=not S[key]
+        b.Text=label..": "..(S[key] and "ON" or "OFF")
+        b.BackgroundColor3=S[key] and Color3.fromRGB(0,150,70) or Color3.fromRGB(38,38,55)
+        if cb then cb(S[key]) end
     end)
-    return btn
+    return b
 end
 
-toggleButton("Auto Farm", "AutoFarm")
-toggleButton("Auto Quest", "AutoQuest")
-toggleButton("Speed 80", "Speed")
-toggleButton("ESP", "ESP")
-toggleButton("Noclip", "Noclip")
-toggleButton("Infinite Jump", "InfJump")
-toggleButton("Full Bright", "FullBright")
-toggleButton("Auto Collect", "AutoCollect")
-toggleButton("Auto Haki", "AutoHaki")
-toggleButton("Fly (up)", "Fly")
-
--- Выбор оружия
-local wLabel = Instance.new("TextLabel")
-wLabel.Size = UDim2.new(1, 0, 0, 24)
-wLabel.BackgroundTransparency = 1
-wLabel.Text = "Оружие для авто-фарма:"
-wLabel.TextColor3 = Color3.fromRGB(180, 180, 220)
-wLabel.Font = Enum.Font.Gotham
-wLabel.TextSize = 12
-wLabel.TextXAlignment = Enum.TextXAlignment.Left
-wLabel.Parent = Scroll
-
-for _, wpn in pairs({"Melee", "Sword", "Gun", "Fruit"}) do
-    local wBtn = makeButton("  " .. wpn, function()
-        State.Weapon = wpn
-        notify("Оружие: " .. wpn)
-    end)
-    wBtn.Size = UDim2.new(1, 0, 0, 30)
+local function label(parent,text)
+    local l=Instance.new("TextLabel")
+    l.Size=UDim2.new(1,-8,0,22)
+    l.BackgroundTransparency=1
+    l.Text=text
+    l.TextColor3=Color3.fromRGB(180,180,220)
+    l.Font=Enum.Font.GothamBold
+    l.TextSize=12
+    l.TextXAlignment=Enum.TextXAlignment.Left
+    l.Parent=parent
+    return l
 end
 
--- Выбор названия меню
-local tLabel = Instance.new("TextLabel")
-tLabel.Size = UDim2.new(1, 0, 0, 24)
-tLabel.BackgroundTransparency = 1
-tLabel.Text = "Название меню:"
-tLabel.TextColor3 = Color3.fromRGB(180, 180, 220)
-tLabel.Font = Enum.Font.Gotham
-tLabel.TextSize = 12
-tLabel.TextXAlignment = Enum.TextXAlignment.Left
-tLabel.Parent = Scroll
-
-for _, name in pairs(MENU_TITLES) do
-    local nBtn = makeButton("  " .. name, function()
-        State.Title = name
-        Title.Text = name .. " | Blox Fruits v2"
-        notify("Название: " .. name)
-    end)
-    nBtn.Size = UDim2.new(1, 0, 0, 28)
+local function textbox(parent,placeholder,cb)
+    local t=Instance.new("TextBox")
+    t.Size=UDim2.new(1,-8,0,32)
+    t.BackgroundColor3=Color3.fromRGB(28,28,40)
+    t.PlaceholderText=placeholder
+    t.Text=""
+    t.TextColor3=Color3.fromRGB(255,255,255)
+    t.PlaceholderColor3=Color3.fromRGB(140,140,170)
+    t.Font=Enum.Font.Gotham
+    t.TextSize=12
+    t.Parent=parent
+    Instance.new("UICorner",t).CornerRadius=UDim.new(0,6)
+    t.FocusLost:Connect(function() if cb then cb(t.Text) end end)
+    return t
 end
 
-notify("ROCKET v2 загружен. PlaceId: " .. game.PlaceId)
-print("[ROCKET v2] Loaded")
+-- ===== FARM TAB =====
+local pFarm=makeTab("Farm",1)
+label(pFarm,"Автофарм")
+toggle(pFarm,"Auto Farm (по квесту)","AutoFarm")
+toggle(pFarm,"Level Farm","LevelFarm")
+toggle(pFarm,"Mastery Farm","MasteryFarm")
+toggle(pFarm,"Auto Quest","AutoQuest")
+toggle(pFarm,"Auto Collect","AutoCollect")
+label(pFarm,"Боссы и рейды")
+toggle(pFarm,"Auto Raid","AutoRaid")
+toggle(pFarm,"Auto Boss","AutoBoss")
+textbox(pFarm,"Имя босса (напр. Saber)",function(t) S.BossName=t notify("Босс: "..t) end)
+label(pFarm,"Оружие для атаки")
+for _,w in ipairs({"Melee","Sword","Gun","Fruit"}) do
+    btn(pFarm,"  "..w,function() S.Weapon=w notify("Оружие: "..w) end)
+end
+label(pFarm,"Рыбалка")
+toggle(pFarm,"Auto Fish","AutoFish")
+
+-- ===== COMBAT TAB =====
+local pCombat=makeTab("Combat",2)
+label(pCombat,"Авто-экипировка")
+toggle(pCombat,"Auto Haki","AutoHaki")
+toggle(pCombat,"Auto Sword","AutoSword")
+toggle(pCombat,"Auto Fruit Sniper","AutoFruitSniper")
+
+-- ===== MOVEMENT TAB =====
+local pMove=makeTab("Move",3)
+label(pMove,"Перемещение")
+toggle(pMove,"Noclip","Noclip")
+toggle(pMove,"Infinite Jump","InfJump")
+toggle(pMove,"Fly (вверх)","Fly")
+
+-- ===== UTILITY TAB =====
+local pUtil=makeTab("Utility",4)
+label(pUtil,"Утилиты")
+toggle(pUtil,"Anti-AFK","AntiAFK")
+toggle(pUtil,"Full Bright","FullBright")
+toggle(pUtil,"Server Hop","ServerHop",function(v)
+    if v then
+        notify("Server hop...")
+        pcall(function()
+            local TS=game:GetService("TeleportService")
+            local servers=game:GetService("HttpService"):JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100"))
+            for _,s in pairs(servers.data) do
+                if s.playing<s.maxPlayers and s.id~=game.JobId then
+                    TS:TeleportToPlaceInstance(game.PlaceId,s.id,LP)
+                    break
+                end
+            end
+        end)
+    end
+end)
+
+-- ===== INFO TAB =====
+local pInfo=makeTab("Info",5)
+label(pInfo,"Banan Hub v3")
+local infoLbl=Instance.new("TextLabel")
+infoLbl.Size=UDim2.new(1,-8,0,80)
+infoLbl.BackgroundColor3=Color3.fromRGB(28,28,40)
+infoLbl.Text="🍌 Banan Hub v3\nDelta / Android\nBlox Fruits\nМеню: перетаскивай за шапку"
+infoLbl.TextColor3=Color3.fromRGB(220,220,240)
+infoLbl.Font=Enum.Font.Gotham
+infoLbl.TextSize=12
+infoLbl.TextWrapped=true
+infoLbl.Parent=pInfo
+Instance.new("UICorner",infoLbl).CornerRadius=UDim.new(0,8)
+
+-- ===== INIT =====
+selectTab("Farm")
+-- Подсветка первой вкладки
+for _,c in pairs(Side:GetChildren()) do
+    if c:IsA("TextButton") and c.Text=="Farm" then
+        c.BackgroundColor3=Color3.fromRGB(255,180,0)
+        c.TextColor3=Color3.fromRGB(20,20,20)
+    end
+end
+
+notify("Banan Hub v3 загружен")
+print("[Banan Hub v3] Loaded | PlaceId:",game.PlaceId)
