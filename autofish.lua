@@ -1,6 +1,6 @@
 --// ============================================
---//  Popka Hub v2 — Fisch Tester Panel
---//  Fixed: Cast, Reel, Shake, Fly + Customize tab
+--//  Popka Hub v3 — Fisch Tester Panel
+--//  Fixed: Fly, Cast, Reel, Shake + Auto Fish
 --// ============================================
 
 local Players            = game:GetService("Players")
@@ -10,7 +10,7 @@ local Workspace          = game:GetService("Workspace")
 local ReplicatedStorage  = game:GetService("ReplicatedStorage")
 local CoreGui            = game:GetService("CoreGui")
 local VirtualUser        = game:GetService("VirtualUser")
-local TweenService       = game:GetService("TweenService")
+local Lighting           = game:GetService("Lighting")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera      = Workspace.CurrentCamera
@@ -21,7 +21,7 @@ local Config = {
         AutoCast      = false,
         AutoReel      = false,
         AutoShake     = false,
-        PerfectCast   = false,
+        AutoFish      = false,   -- all-in-one
         CastCooldown  = 2,
         ReelCooldown  = 2,
         ShakeDelay    = 0.15,
@@ -30,19 +30,17 @@ local Config = {
         SpeedEnabled  = false,
         SpeedValue    = 50,
         FlyEnabled    = false,
-        FlySpeed      = 50,
+        FlySpeed      = 80,
+        FlyMethod     = "Velocity", -- "Velocity" or "CFrame"
         NoclipEnabled = false,
         InfiniteJump  = false,
         AntiAFK       = true,
         Fullbright    = false,
+        ClickTP       = false,
     },
     Customize = {
         Accent        = Color3.fromRGB(255, 100, 150),
-        Bg            = Color3.fromRGB(18, 18, 22),
-        Panel         = Color3.fromRGB(26, 26, 32),
-        Element       = Color3.fromRGB(36, 36, 44),
         Transparency  = 0,
-        GuiScale      = 1,
     },
     Profile = {
         TestMode = false,
@@ -65,9 +63,9 @@ local function R(name)
     return Net:FindFirstChild(name)
 end
 
-local shared_ = ReplicatedStorage:FindFirstChild("shared")
 local rodEvents
 do
+    local shared_ = ReplicatedStorage:FindFirstChild("shared")
     local mods = shared_ and shared_:FindFirstChild("modules")
     local fishing = mods and mods:FindFirstChild("fishing")
     local rodres = fishing and fishing:FindFirstChild("rodresources")
@@ -75,46 +73,31 @@ do
 end
 
 local Remotes = {
-    -- Rod casting (both paths — whichever exists)
     CastRod       = R("RF/FishingRod/Cast"),
     CastAsync     = rodEvents and rodEvents:FindFirstChild("castAsync"),
     CatchFinish   = rodEvents and rodEvents:FindFirstChild("catchfinish"),
     HandleBobber  = rodEvents and rodEvents:FindFirstChild("handlebobber"),
     BreakBobber   = rodEvents and rodEvents:FindFirstChild("breakbobber"),
     ResetRod      = rodEvents and rodEvents:FindFirstChild("reset"),
-
-    -- Reeling
     ReelStart     = R("RF/Reel/Start"),
     ReelFinish    = R("RE/Reel/Finish"),
     ReelAbort     = R("RE/Reel/Abort"),
-
-    -- Lure shaking (for minigame)
     LureStart     = R("RF/LureShake/Start"),
     LureStop      = R("RE/LureShake/Stop"),
     LureShake     = R("RE/LureShake/Shake"),
-
-    -- Stab (secondary minigame)
     StabStart     = R("RF/Stab/Start"),
     StabFinish    = R("RE/Stab/Finish"),
     StabAbort     = R("RE/Stab/Abort"),
-
-    -- Spear
-    SpearMinigame = R("RF/SpearFishing/Minigame"),
-
-    -- Teleport
     RequestTp     = R("RE/RequestTeleport"),
     GetSpawn      = R("RF/GetSpawnPosition"),
     GetZone       = R("RF/GetZone"),
     DeepTp        = R("RF/Deep/Teleport"),
     MarianasTp    = R("RF/MarianasVeil/Teleport"),
     ReturnSurface = R("RE/ReturnToSurface"),
-
-    -- Backpack
     Equip         = R("RE/Backpack/Equip"),
     Favorite      = R("RE/Backpack/Favourite"),
 }
 
--- Safe fire/invoke
 local function fire(remote, ...)
     if not remote then return false, "missing" end
     local args = {...}
@@ -137,16 +120,16 @@ local function safeParent(gui)
     end
 end
 
-local existing = CoreGui:FindFirstChild("PopkaHub")
-if existing then existing:Destroy() end
-local existing2 = LocalPlayer.PlayerGui:FindFirstChild("PopkaHub")
-if existing2 then existing2:Destroy() end
+local old = CoreGui:FindFirstChild("PopkaHub")
+if old then old:Destroy() end
+local old2 = LocalPlayer.PlayerGui:FindFirstChild("PopkaHub")
+if old2 then old2:Destroy() end
 
 --// ============ THEME ============
 local Theme = {
-    Bg        = Config.Customize.Bg,
-    Panel     = Config.Customize.Panel,
-    Element   = Config.Customize.Element,
+    Bg        = Color3.fromRGB(18, 18, 22),
+    Panel     = Color3.fromRGB(26, 26, 32),
+    Element   = Color3.fromRGB(36, 36, 44),
     Accent    = Config.Customize.Accent,
     Text      = Color3.fromRGB(235, 235, 240),
     Subtext   = Color3.fromRGB(150, 150, 165),
@@ -163,10 +146,9 @@ ScreenGui.DisplayOrder = 999
 safeParent(ScreenGui)
 
 local Main = Instance.new("Frame")
-Main.Size = UDim2.new(0, 520, 0, 380)
-Main.Position = UDim2.new(0.5, -260, 0.5, -190)
+Main.Size = UDim2.new(0, 520, 0, 400)
+Main.Position = UDim2.new(0.5, -260, 0.5, -200)
 Main.BackgroundColor3 = Theme.Bg
-Main.BackgroundTransparency = Config.Customize.Transparency
 Main.BorderSizePixel = 0
 Main.Active = true
 Main.Draggable = true
@@ -175,7 +157,6 @@ Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 12)
 
 local MainStroke = Instance.new("UIStroke", Main)
 MainStroke.Color = Color3.fromRGB(45, 45, 55)
-MainStroke.Thickness = 1
 
 local TitleBar = Instance.new("Frame")
 TitleBar.Size = UDim2.new(1, 0, 0, 40)
@@ -195,13 +176,14 @@ local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, -100, 1, 0)
 TitleLabel.Position = UDim2.new(0, 15, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "Popka Hub v2  |  Fisch Tester"
+TitleLabel.Text = "Popka Hub v3  |  Fisch Tester"
 TitleLabel.TextColor3 = Theme.Accent
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 15
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = TitleBar
 
+-- COLLAPSE BUTTON (fixed)
 local MinBtn = Instance.new("TextButton")
 MinBtn.Size = UDim2.new(0, 26, 0, 26)
 MinBtn.Position = UDim2.new(1, -66, 0, 7)
@@ -280,7 +262,7 @@ end
 for _, name in ipairs(TabOrder) do
     createPage(name)
     local tb = Instance.new("TextButton")
-    tb.Size = UDim2.new(0, 85, 0, 24)
+    tb.Size = UDim2.new(0, 80, 0, 24)
     tb.BackgroundColor3 = Theme.Element
     tb.BorderSizePixel = 0
     tb.Text = name
@@ -453,43 +435,6 @@ local function makeButton(parent, text, callback, color)
     btn.MouseButton1Click:Connect(callback)
 end
 
-local function makeTextBox(parent, text, default, callback)
-    local holder = Instance.new("Frame")
-    holder.Size = UDim2.new(1, 0, 0, 32)
-    holder.BackgroundColor3 = Theme.Element
-    holder.BorderSizePixel = 0
-    holder.Parent = parent
-    Instance.new("UICorner", holder).CornerRadius = UDim.new(0, 6)
-
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(0.4, 0, 1, 0)
-    label.Position = UDim2.new(0, 12, 0, 0)
-    label.BackgroundTransparency = 1
-    label.Text = text
-    label.TextColor3 = Theme.Text
-    label.Font = Enum.Font.Gotham
-    label.TextSize = 13
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = holder
-
-    local box = Instance.new("TextBox")
-    box.Size = UDim2.new(0.6, -12, 0.7, 0)
-    box.Position = UDim2.new(0.4, 0, 0.15, 0)
-    box.BackgroundColor3 = Theme.Bg
-    box.BorderSizePixel = 0
-    box.Text = default or ""
-    box.TextColor3 = Theme.Accent
-    box.Font = Enum.Font.GothamMedium
-    box.TextSize = 12
-    box.ClearTextOnFocus = false
-    box.Parent = holder
-    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 4)
-
-    box.FocusLost:Connect(function()
-        callback(box.Text)
-    end)
-end
-
 local function makeInfoRow(parent, key, value)
     local row = Instance.new("Frame")
     row.Size = UDim2.new(1, 0, 0, 28)
@@ -537,22 +482,27 @@ end
 --// ============ FISH PAGE ============
 local fishPage = Pages["Fish"]
 
-makeSection(fishPage, "AUTO FARM")
+makeSection(fishPage, "AUTO FISH")
+makeToggle(fishPage, "Auto Fish (all-in-one)", false, function(v) 
+    Config.Fish.AutoFish = v
+    if v then print("[Popka] Auto Fish ON") else print("[Popka] Auto Fish OFF") end
+end)
 makeToggle(fishPage, "Auto Cast", false, function(v) Config.Fish.AutoCast = v end)
 makeToggle(fishPage, "Auto Reel", false, function(v) Config.Fish.AutoReel = v end)
-makeToggle(fishPage, "Auto Shake (minigame)", false, function(v) Config.Fish.AutoShake = v end)
+makeToggle(fishPage, "Auto Shake", false, function(v) Config.Fish.AutoShake = v end)
+
+makeSection(fishPage, "TIMING")
 makeSlider(fishPage, "Cast Cooldown (s)", 1, 10, 2, function(v) Config.Fish.CastCooldown = v end)
 makeSlider(fishPage, "Reel Cooldown (s)", 1, 10, 2, function(v) Config.Fish.ReelCooldown = v end)
 makeSlider(fishPage, "Shake Delay (ms)", 50, 500, 150, function(v) Config.Fish.ShakeDelay = v / 1000 end)
 
 makeSection(fishPage, "MANUAL ACTIONS")
-makeButton(fishPage, "Cast Rod (CastAsync)", function()
+makeButton(fishPage, "Cast Rod", function()
     local ok, err = invoke(Remotes.CastAsync)
-    print("[Popka] CastAsync:", ok, err)
-end)
-makeButton(fishPage, "Cast Rod (Fallback RF)", function()
-    local ok, err = invoke(Remotes.CastRod)
-    print("[Popka] CastRod:", ok, err)
+    if not ok or not Remotes.CastAsync then
+        ok, err = invoke(Remotes.CastRod)
+    end
+    print("[Popka] Cast:", ok, err)
 end)
 makeButton(fishPage, "Start Reel", function()
     local ok, err = invoke(Remotes.ReelStart)
@@ -562,58 +512,32 @@ makeButton(fishPage, "Finish Reel", function()
     local ok, err = fire(Remotes.ReelFinish)
     print("[Popka] ReelFinish:", ok, err)
 end)
-makeButton(fishPage, "Abort Reel", function()
-    local ok, err = fire(Remotes.ReelAbort)
-    print("[Popka] Abort:", ok, err)
-end)
-makeButton(fishPage, "Trigger Catch Finish", function()
+makeButton(fishPage, "Trigger Catch", function()
     local ok, err = fire(Remotes.CatchFinish)
     print("[Popka] CatchFinish:", ok, err)
 end)
 
-makeSection(fishPage, "SHAKE MINIGAME")
-makeButton(fishPage, "Lure Start", function()
-    local ok, err = invoke(Remotes.LureStart)
-    print("[Popka] LureStart:", ok, err)
-end)
+makeSection(fishPage, "MINIGAMES")
 makeButton(fishPage, "Lure Shake (once)", function()
-    local ok, err = fire(Remotes.LureShake)
-    print("[Popka] LureShake:", ok, err)
+    fire(Remotes.LureShake, Vector2.new(math.random(-100,100), math.random(-100,100)))
 end)
-makeButton(fishPage, "Lure Stop", function()
-    local ok, err = fire(Remotes.LureStop)
-    print("[Popka] LureStop:", ok, err)
-end)
-makeButton(fishPage, "Stab Minigame Start", function()
-    local ok, err = invoke(Remotes.StabStart)
-    print("[Popka] StabStart:", ok, err)
+makeButton(fishPage, "Stab Start", function()
+    invoke(Remotes.StabStart)
 end)
 makeButton(fishPage, "Stab Finish", function()
-    local ok, err = fire(Remotes.StabFinish)
-    print("[Popka] StabFinish:", ok, err)
+    fire(Remotes.StabFinish)
 end)
 
 makeSection(fishPage, "ROD")
-makeButton(fishPage, "Reset Rod", function()
-    local ok, err = fire(Remotes.ResetRod)
-    print("[Popka] ResetRod:", ok, err)
-end)
-makeButton(fishPage, "Break Bobber", function()
-    local ok, err = fire(Remotes.BreakBobber)
-    print("[Popka] BreakBobber:", ok, err)
-end)
+makeButton(fishPage, "Reset Rod", function() fire(Remotes.ResetRod) end)
+makeButton(fishPage, "Break Bobber", function() fire(Remotes.BreakBobber) end)
 
 makeSection(fishPage, "TELEPORT")
-makeButton(fishPage, "Request Teleport to Spawn", function()
+makeButton(fishPage, "Teleport to Spawn", function()
     local ok, pos = invoke(Remotes.GetSpawn)
-    if ok and pos then
-        fire(Remotes.RequestTp, pos)
-        print("[Popka] Tp to spawn:", pos)
-    end
+    if ok and pos then fire(Remotes.RequestTp, pos) end
 end)
-makeButton(fishPage, "Return to Surface", function()
-    fire(Remotes.ReturnSurface)
-end)
+makeButton(fishPage, "Return to Surface", function() fire(Remotes.ReturnSurface) end)
 
 --// ============ MISC PAGE ============
 local miscPage = Pages["Misc"]
@@ -622,8 +546,9 @@ makeSection(miscPage, "MOVEMENT")
 makeToggle(miscPage, "Speed Hack", false, function(v)
     Config.Misc.SpeedEnabled = v
     local char = LocalPlayer.Character
-    if char and char:FindFirstChildOfClass("Humanoid") then
-        char:FindFirstChildOfClass("Humanoid").WalkSpeed = v and Config.Misc.SpeedValue or 16
+    if char then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then hum.WalkSpeed = v and Config.Misc.SpeedValue or 16 end
     end
 end)
 makeSlider(miscPage, "Speed Value", 16, 300, 50, function(v)
@@ -636,21 +561,25 @@ makeSlider(miscPage, "Speed Value", 16, 300, 50, function(v)
         end
     end
 end)
-makeToggle(miscPage, "Fly", false, function(v) Config.Misc.FlyEnabled = v end)
-makeSlider(miscPage, "Fly Speed", 10, 500, 100, function(v) Config.Misc.FlySpeed = v end)
 makeToggle(miscPage, "Noclip", false, function(v) Config.Misc.NoclipEnabled = v end)
 makeToggle(miscPage, "Infinite Jump", false, function(v) Config.Misc.InfiniteJump = v end)
+
+makeSection(miscPage, "FLY (REBUILT)")
+makeToggle(miscPage, "Fly", false, function(v) 
+    Config.Misc.FlyEnabled = v
+    print("[Popka] Fly:", v)
+end)
+makeSlider(miscPage, "Fly Speed", 20, 500, 80, function(v) Config.Misc.FlySpeed = v end)
 
 makeSection(miscPage, "VISUAL")
 makeToggle(miscPage, "Fullbright", false, function(v)
     Config.Misc.Fullbright = v
     if v then
-        Lighting = Lighting or game:GetService("Lighting")
-        Lighting.Ambient = Color3.fromRGB(178, 178, 178)
+        Lighting.Ambient = Color3.fromRGB(200, 200, 200)
         Lighting.Brightness = 3
-        Lighting.OutdoorAmbient = Color3.fromRGB(178, 178, 178)
-        Lighting.ClockTime = 14
-        Lighting.FogEnd = 100000
+        Lighting.OutdoorAmbient = Color3.fromRGB(200, 200, 200)
+        Lighting.FogEnd = 9e9
+        Lighting.ClockTime = 12
     else
         Lighting.Ambient = Color3.fromRGB(70, 70, 70)
         Lighting.Brightness = 1
@@ -665,63 +594,44 @@ makeToggle(miscPage, "Anti-AFK", true, function(v) Config.Misc.AntiAFK = v end)
 --// ============ CUSTOMIZE PAGE ============
 local customizePage = Pages["Customize"]
 
-makeSection(customizePage, "COLORS")
+makeSection(customizePage, "ACCENT COLOR")
 
--- Color presets
-local function applyAccent(color)
-    Theme.Accent = color
-    Config.Customize.Accent = color
-    TitleLabel.TextColor3 = color
-    for _, btn in pairs(TabButtons) do
-        if btn.TextColor3 == Color3.fromRGB(255, 255, 255) then
-            btn.BackgroundColor3 = color
-        end
-    end
-    for _, page in pairs(Pages) do
-        for _, child in pairs(page:GetChildren()) do
-            if child:IsA("TextLabel") and child.TextColor3 == Theme.Accent then
-                child.TextColor3 = color
+local accentPresets = {
+    ["Pink"]    = Color3.fromRGB(255, 100, 150),
+    ["Cyan"]    = Color3.fromRGB(100, 220, 255),
+    ["Lime"]    = Color3.fromRGB(150, 255, 100),
+    ["Orange"]  = Color3.fromRGB(255, 160, 60),
+    ["Purple"]  = Color3.fromRGB(180, 120, 255),
+    ["Red"]     = Color3.fromRGB(240, 70, 70),
+    ["White"]   = Color3.fromRGB(240, 240, 240),
+    ["Gold"]    = Color3.fromRGB(255, 215, 0),
+}
+
+for name, color in pairs(accentPresets) do
+    makeButton(customizePage, "Accent: " .. name, function()
+        Theme.Accent = color
+        TitleLabel.TextColor3 = color
+        for _, btn in pairs(TabButtons) do
+            if btn.BackgroundColor3 ~= Theme.Element then
+                btn.BackgroundColor3 = color
             end
         end
-    end
-    print("[Popka] Accent changed to", tostring(color))
+        print("[Popka] Accent:", name)
+    end)
 end
 
-makeButton(customizePage, "Accent: Pink (default)", function()
-    applyAccent(Color3.fromRGB(255, 100, 150))
-end)
-makeButton(customizePage, "Accent: Cyan", function()
-    applyAccent(Color3.fromRGB(100, 220, 255))
-end)
-makeButton(customizePage, "Accent: Lime", function()
-    applyAccent(Color3.fromRGB(150, 255, 100))
-end)
-makeButton(customizePage, "Accent: Orange", function()
-    applyAccent(Color3.fromRGB(255, 160, 60))
-end)
-makeButton(customizePage, "Accent: Purple", function()
-    applyAccent(Color3.fromRGB(180, 120, 255))
-end)
-makeButton(customizePage, "Accent: Red", function()
-    applyAccent(Color3.fromRGB(240, 70, 70))
-end)
-makeButton(customizePage, "Accent: White", function()
-    applyAccent(Color3.fromRGB(240, 240, 240))
-end)
-
 makeSection(customizePage, "TRANSPARENCY")
-makeSlider(customizePage, "Background alpha (%)", 0, 100, 0, function(v)
+makeSlider(customizePage, "Main alpha (%)", 0, 100, 0, function(v)
     Main.BackgroundTransparency = v / 100
-    Config.Customize.Transparency = v / 100
 end)
-makeSlider(customizePage, "Title bar alpha (%)", 0, 100, 0, function(v)
-    TitleBar.BackgroundColor3 = Theme.Panel
+makeSlider(customizePage, "Title alpha (%)", 0, 100, 0, function(v)
     TitleBar.BackgroundTransparency = v / 100
     TitleFix.BackgroundTransparency = v / 100
+    TabBar.BackgroundTransparency = v / 100
 end)
 
 makeSection(customizePage, "THEME")
-makeButton(customizePage, "Theme: Dark (default)", function()
+makeButton(customizePage, "Theme: Dark", function()
     Theme.Bg = Color3.fromRGB(18, 18, 22)
     Theme.Panel = Color3.fromRGB(26, 26, 32)
     Theme.Element = Color3.fromRGB(36, 36, 44)
@@ -732,28 +642,21 @@ makeButton(customizePage, "Theme: Dark (default)", function()
 end)
 makeButton(customizePage, "Theme: Black", function()
     Theme.Bg = Color3.fromRGB(0, 0, 0)
-    Theme.Panel = Color3.fromRGB(10, 10, 10)
-    Theme.Element = Color3.fromRGB(20, 20, 20)
+    Theme.Panel = Color3.fromRGB(8, 8, 8)
+    Theme.Element = Color3.fromRGB(18, 18, 18)
     Main.BackgroundColor3 = Theme.Bg
     TitleBar.BackgroundColor3 = Theme.Panel
     TitleFix.BackgroundColor3 = Theme.Panel
     TabBar.BackgroundColor3 = Theme.Panel
 end)
-makeButton(customizePage, "Theme: Blue", function()
-    Theme.Bg = Color3.fromRGB(15, 20, 35)
-    Theme.Panel = Color3.fromRGB(22, 30, 50)
-    Theme.Element = Color3.fromRGB(32, 42, 65)
+makeButton(customizePage, "Theme: Navy", function()
+    Theme.Bg = Color3.fromRGB(12, 18, 32)
+    Theme.Panel = Color3.fromRGB(20, 28, 46)
+    Theme.Element = Color3.fromRGB(30, 40, 62)
     Main.BackgroundColor3 = Theme.Bg
     TitleBar.BackgroundColor3 = Theme.Panel
     TitleFix.BackgroundColor3 = Theme.Panel
     TabBar.BackgroundColor3 = Theme.Panel
-end)
-
-makeSection(customizePage, "SCALE")
-makeSlider(customizePage, "GUI Scale (%)", 50, 150, 100, function(v)
-    local scale = v / 100
-    ScreenGui.IgnoreGuiInset = true
-    Main.Size = UDim2.new(0, 520 * scale, 0, 380 * scale)
 end)
 
 --// ============ PROFILE PAGE ============
@@ -765,38 +668,101 @@ makeInfoRow(profilePage, "User ID", LocalPlayer.UserId)
 makeInfoRow(profilePage, "Account Age", LocalPlayer.AccountAge .. " days")
 
 makeSection(profilePage, "REMOTES")
-local remStatus = makeStatus(profilePage, "")
 local total, found = 0, 0
 for k, v in pairs(Remotes) do
     total = total + 1
     if v then found = found + 1 end
 end
-remStatus.Text = "Resolved: " .. found .. " / " .. total
+makeStatus(profilePage, "Resolved: " .. found .. " / " .. total)
 
 makeSection(profilePage, "TESTER")
-makeToggle(profilePage, "Test Mode", false, function(v)
-    Config.Profile.TestMode = v
-end)
+makeToggle(profilePage, "Test Mode", false, function(v) Config.Profile.TestMode = v end)
 makeButton(profilePage, "Copy User ID", function()
-    if setclipboard then
-        setclipboard(tostring(LocalPlayer.UserId))
-    end
+    if setclipboard then setclipboard(tostring(LocalPlayer.UserId)) end
 end)
-makeButton(profilePage, "List All Remotes (console)", function()
+makeButton(profilePage, "Dump Remote Status", function()
     for k, v in pairs(Remotes) do
         print("[Popka.Remote]", k, v and "OK" or "MISSING")
     end
 end)
-makeButton(profilePage, "Unload Popka Hub", function()
-    ScreenGui:Destroy()
-end, Theme.Danger)
+makeButton(profilePage, "Unload Popka Hub", function() ScreenGui:Destroy() end, Theme.Danger)
 
---// ============ FUNCTIONALITY ============
+--// ============ FLY (REBUILT — works on most methods) ============
+local flyKeys = {W=false, A=false, S=false, D=false, Space=false, LCtrl=false}
 
--- Speed
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    local k = input.KeyCode
+    if k == Enum.KeyCode.W then flyKeys.W = true end
+    if k == Enum.KeyCode.A then flyKeys.A = true end
+    if k == Enum.KeyCode.S then flyKeys.S = true end
+    if k == Enum.KeyCode.D then flyKeys.D = true end
+    if k == Enum.KeyCode.Space then flyKeys.Space = true end
+    if k == Enum.KeyCode.LeftControl then flyKeys.LCtrl = true end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    local k = input.KeyCode
+    if k == Enum.KeyCode.W then flyKeys.W = false end
+    if k == Enum.KeyCode.A then flyKeys.A = false end
+    if k == Enum.KeyCode.S then flyKeys.S = false end
+    if k == Enum.KeyCode.D then flyKeys.D = false end
+    if k == Enum.KeyCode.Space then flyKeys.Space = false end
+    if k == Enum.KeyCode.LeftControl then flyKeys.LCtrl = false end
+end)
+
+-- Use Velocity method: works with PlatformStand
+local function getRoot()
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    return hrp, hum
+end
+
 RunService.Heartbeat:Connect(function()
-    if Config.Misc.SpeedEnabled then
-        local char = LocalPlayer.Character
+    if not Config.Misc.FlyEnabled then return end
+    local hrp, hum = getRoot()
+    if not hrp or not hum then return end
+
+    -- Disable default movement
+    hum.PlatformStand = true
+    hrp.Velocity = Vector3.zero
+
+    -- Direction from camera
+    local camCF = Camera.CFrame
+    local move = Vector3.zero
+    if flyKeys.W then move = move + camCF.LookVector end
+    if flyKeys.S then move = move - camCF.LookVector end
+    if flyKeys.A then move = move - camCF.RightVector end
+    if flyKeys.D then move = move + camCF.RightVector end
+    if flyKeys.Space then move = move + Vector3.new(0,1,0) end
+    if flyKeys.LCtrl then move = move - Vector3.new(0,1,0) end
+
+    if move.Magnitude > 0 then
+        hrp.CFrame = hrp.CFrame + (move.Unit * Config.Misc.FlySpeed * (1/60))
+    end
+    hrp.CFrame = CFrame.new(hrp.Position, hrp.Position + camCF.LookVector)
+end)
+
+-- Restore normal state when fly off
+task.spawn(function()
+    local wasFly = false
+    while ScreenGui.Parent do
+        task.wait(0.2)
+        if wasFly and not Config.Misc.FlyEnabled then
+            local hrp, hum = getRoot()
+            if hum then hum.PlatformStand = false end
+        end
+        wasFly = Config.Misc.FlyEnabled
+    end
+end)
+
+--// ============ OTHER FUNCTIONS ============
+
+-- Speed loop
+RunService.Heartbeat:Connect(function()
+    if Config.Misc.SpeedEnabled then        local char = LocalPlayer.Character
         if char then
             local hum = char:FindFirstChildOfClass("Humanoid")
             if hum then hum.WalkSpeed = Config.Misc.SpeedValue end
@@ -804,127 +770,25 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- Noclip
+-- Noclip loop
 RunService.Stepped:Connect(function()
     if Config.Misc.NoclipEnabled then
         local char = LocalPlayer.Character
         if char then
             for _, part in pairs(char:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = false
-                end
+                if part:IsA("BasePart") then part.CanCollide = false end
             end
         end
     end
 end)
 
--- Infinite Jump
+-- Infinite jump
 UserInputService.JumpRequest:Connect(function()
     if Config.Misc.InfiniteJump then
         local char = LocalPlayer.Character
         if char then
             local hum = char:FindFirstChildOfClass("Humanoid")
             if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
-        end
-    end
-end)
-
--- ============ FLY (REBUILT — more reliable) ============
-local flyConn
-local flyBV, flyBG
-local flyKeys = {W=false, A=false, S=false, D=false, Space=false, LCtrl=false}
-
-local function startFly()
-    local char = LocalPlayer.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-
-    flyBV = Instance.new("BodyVelocity")
-    flyBV.Name = "PopkaFly"
-    flyBV.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-    flyBV.Velocity = Vector3.zero
-    flyBV.Parent = hrp
-
-    flyBG = Instance.new("BodyGyro")
-    flyBG.Name = "PopkaFlyGyro"
-    flyBG.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-    flyBG.P = 9e4
-    flyBG.D = 500
-    flyBG.CFrame = hrp.CFrame
-    flyBG.Parent = hrp
-end
-
-local function stopFly()
-    if flyBV then flyBV:Destroy() flyBV = nil end
-    if flyBG then flyBG:Destroy() flyBG = nil end
-end
-
--- keyboard tracking
-UserInputService.InputBegan:Connect(function(input, gp)
-    if gp then return end
-    if input.KeyCode == Enum.KeyCode.W then flyKeys.W = true end
-    if input.KeyCode == Enum.KeyCode.A then flyKeys.A = true end
-    if input.KeyCode == Enum.KeyCode.S then flyKeys.S = true end
-    if input.KeyCode == Enum.KeyCode.D then flyKeys.D = true end
-    if input.KeyCode == Enum.KeyCode.Space then flyKeys.Space = true end
-    if input.KeyCode == Enum.KeyCode.LeftControl then flyKeys.LCtrl = true end
-end)
-UserInputService.InputEnded:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.W then flyKeys.W = false end
-    if input.KeyCode == Enum.KeyCode.A then flyKeys.A = false end
-    if input.KeyCode == Enum.KeyCode.S then flyKeys.S = false end
-    if input.KeyCode == Enum.KeyCode.D then flyKeys.D = false end
-    if input.KeyCode == Enum.KeyCode.Space then flyKeys.Space = false end
-    if input.KeyCode == Enum.KeyCode.LeftControl then flyKeys.LCtrl = false end
-end)
-
-if flyConn then flyConn:Disconnect() end
-flyConn = RunService.RenderStepped:Connect(function()
-    if not Config.Misc.FlyEnabled then
-        if flyBV or flyBG then stopFly() end
-        return
-    end
-
-    local char = LocalPlayer.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if hum then hum.PlatformStand = true end
-
-    if not flyBV or not flyBG or flyBV.Parent ~= hrp then
-        stopFly()
-        startFly()
-    end
-
-    flyBG.CFrame = Camera.CFrame
-
-    local move = Vector3.zero
-    if flyKeys.W then move = move + Camera.CFrame.LookVector end
-    if flyKeys.S then move = move - Camera.CFrame.LookVector end
-    if flyKeys.A then move = move - Camera.CFrame.RightVector end
-    if flyKeys.D then move = move + Camera.CFrame.RightVector end
-    if flyKeys.Space then move = move + Vector3.new(0,1,0) end
-    if flyKeys.LCtrl then move = move - Vector3.new(0,1,0) end
-
-    if move.Magnitude > 0 then
-        flyBV.Velocity = move.Unit * Config.Misc.FlySpeed
-    else
-        flyBV.Velocity = Vector3.zero
-    end
-end)
-
--- release platform stand when fly off
-task.spawn(function()
-    while ScreenGui.Parent do
-        task.wait(0.5)
-        if not Config.Misc.FlyEnabled then
-            local char = LocalPlayer.Character
-            if char then
-                local hum = char:FindFirstChildOfClass("Humanoid")
-                if hum and hum.PlatformStand then hum.PlatformStand = false end
-            end
         end
     end
 end)
@@ -937,14 +801,40 @@ LocalPlayer.Idled:Connect(function()
     end
 end)
 
--- ============ AUTO FISH LOOP (REBUILT) ============
-local lastCast = 0
-local lastReel = 0
-local lastShake = 0
-local castState = "idle" -- idle -> casted -> reeling
+--// ============ AUTO FISH STATE MACHINE ============
+local autoState = {
+    phase = "idle", -- idle -> casting -> casted -> reeling -> shaking
+    lastCast = 0,
+    lastReel = 0,
+    lastShake = 0,
+    castTimeout = 0,
+}
+
+local function autoCast()
+    if Remotes.CastAsync then
+        return invoke(Remotes.CastAsync)
+    elseif Remotes.CastRod then
+        return invoke(Remotes.CastRod)
+    end
+    return false
+end
+
+local function autoReel()
+    invoke(Remotes.ReelStart)
+    task.wait(0.2)
+    fire(Remotes.ReelFinish)
+end
+
+local function autoShake()
+    if Remotes.LureShake then
+        fire(Remotes.LureShake, Vector2.new(math.random(-100, 100), math.random(-100, 100)))
+    end
+end
 
 RunService.Heartbeat:Connect(function()
-    if not Config.Fish.AutoCast and not Config.Fish.AutoReel and not Config.Fish.AutoShake then return end
+    local shouldRun = Config.Fish.AutoFish or Config.Fish.AutoCast or Config.Fish.AutoReel or Config.Fish.AutoShake
+    if not shouldRun then return end
+
     local char = LocalPlayer.Character
     if not char then return end
     local hum = char:FindFirstChildOfClass("Humanoid")
@@ -952,55 +842,61 @@ RunService.Heartbeat:Connect(function()
 
     local now = os.clock()
 
-    -- Auto Cast
-    if Config.Fish.AutoCast and now - lastCast >= Config.Fish.CastCooldown then
-        if castState == "idle" then
-            local ok
-            if Remotes.CastAsync then
-                ok = invoke(Remotes.CastAsync)
-            elseif Remotes.CastRod then
-                ok = invoke(Remotes.CastRod)
-            end
-            if ok then
-                castState = "casted"
-                lastCast = now
-                print("[Popka.Auto] Cast")
-            end
+    -- Auto Fish all-in-one
+    if Config.Fish.AutoFish then
+        if autoState.phase == "idle" and now - autoState.lastCast >= Config.Fish.CastCooldown then
+            autoCast()
+            autoState.phase = "casting"
+            autoState.castTimeout = now + 3
+            autoState.lastCast = now
+            print("[Popka.Auto] Casting...")
+        elseif autoState.phase == "casting" and now >= autoState.castTimeout then
+            -- Wait a moment for fish to bite, then reel
+            autoState.phase = "reeling"
+            autoState.lastReel = now
+        elseif autoState.phase == "reeling" and now - autoState.lastReel >= Config.Fish.ReelCooldown then
+            autoReel()
+            autoState.phase = "idle"
+            print("[Popka.Auto] Reeled")
+        end
+
+        -- Shake constantly during cast
+        if autoState.phase == "casting" and now - autoState.lastShake >= Config.Fish.ShakeDelay then
+            autoShake()
+            autoState.lastShake = now
         end
     end
 
-    -- Auto Reel
-    if Config.Fish.AutoReel and now - lastReel >= Config.Fish.ReelCooldown then
-        if castState == "casted" then
-            invoke(Remotes.ReelStart)
-            task.wait(0.2)
-            fire(Remotes.ReelFinish)
-            castState = "idle"
-            lastReel = now
-            print("[Popka.Auto] Reel")
+    -- Standalone toggles
+    if Config.Fish.AutoCast and not Config.Fish.AutoFish then
+        if now - autoState.lastCast >= Config.Fish.CastCooldown then
+            autoCast()
+            autoState.lastCast = now
         end
     end
-
-    -- Auto Shake (spams shake during minigame)
-    if Config.Fish.AutoShake and now - lastShake >= Config.Fish.ShakeDelay then
-        lastShake = now
-        if Remotes.LureShake then
-            fire(Remotes.LureShake, Vector2.new(math.random(-100, 100), math.random(-100, 100)))
+    if Config.Fish.AutoReel and not Config.Fish.AutoFish then
+        if now - autoState.lastReel >= Config.Fish.ReelCooldown then
+            autoReel()
+            autoState.lastReel = now
+        end
+    end
+    if Config.Fish.AutoShake and not Config.Fish.AutoFish then
+        if now - autoState.lastShake >= Config.Fish.ShakeDelay then
+            autoShake()
+            autoState.lastShake = now
         end
     end
 end)
 
---// ============ BUTTON HOOKS ============
-CloseBtn.MouseButton1Click:Connect(function()
-    ScreenGui:Destroy()
-end)
-
+--// ============ COLLAPSE / CLOSE ============
+local originalSize = UDim2.new(0, 520, 0, 400)
+local miniSize = UDim2.new(0, 520, 0, 40)
 local minimized = false
-local originalSize = UDim2.new(0, 520, 0, 380)
+
 MinBtn.MouseButton1Click:Connect(function()
     minimized = not minimized
     if minimized then
-        Main.Size = UDim2.new(0, 520, 0, 40)
+        Main.Size = miniSize
         MinBtn.Text = "+"
     else
         Main.Size = originalSize
@@ -1008,7 +904,12 @@ MinBtn.MouseButton1Click:Connect(function()
     end
 end)
 
+CloseBtn.MouseButton1Click:Connect(function()
+    ScreenGui:Destroy()
+end)
+
 --// ============ INIT ============
 switchTab("Fish")
-print("[Popka Hub v2] Loaded - User:", LocalPlayer.Name)
-print("[Popka Hub v2] Remotes resolved:", found, "/", total)
+print("[Popka Hub v3] Loaded - User:", LocalPlayer.Name)
+print("[Popka Hub v3] Remotes resolved:", found, "/", total)
+print("[Popka Hub v3] Fly method: Heartbeat CF (PlatformStand)")
