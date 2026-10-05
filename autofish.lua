@@ -1,6 +1,7 @@
 --// ============================================
 --//  Popka Hub — Anti-Cheat Tester Panel
 --//  For Fisch (authorized testing only)
+--//  Fixed: vararg bug, CoreGui -> PlayerGui
 --// ============================================
 
 local Players            = game:GetService("Players")
@@ -39,8 +40,6 @@ local Config = {
 }
 
 --// ============ REMOTE RESOLUTION ============
--- Paths from the dump. We resolve them defensively.
-
 local Net
 do
     local packages = ReplicatedStorage:FindFirstChild("packages")
@@ -48,8 +47,8 @@ do
         Net = packages:FindFirstChild("Net")
     end
     if not Net then
-        Net = ReplicatedStorage:WaitForChild("packages", 5)
-              and ReplicatedStorage.packages:WaitForChild("Net", 5)
+        local p = ReplicatedStorage:WaitForChild("packages", 5)
+        if p then Net = p:WaitForChild("Net", 5) end
     end
 end
 
@@ -58,55 +57,62 @@ local function R(name)
     return Net:FindFirstChild(name)
 end
 
+local shared_ = ReplicatedStorage:FindFirstChild("shared")
+local rodEvents
+if shared_ then
+    local mods = shared_:FindFirstChild("modules")
+    if mods then
+        local fishing = mods:FindFirstChild("fishing")
+        if fishing then
+            local rodres = fishing:FindFirstChild("rodresources")
+            if rodres then rodEvents = rodres:FindFirstChild("events") end
+        end
+    end
+end
+
 local Remotes = {
-    -- Fishing
     Cast          = R("RF/FishingRod/Cast"),
     ReelStart     = R("RF/Reel/Start"),
     ReelFinish    = R("RE/Reel/Finish"),
     ReelAbort     = R("RE/Reel/Abort"),
-    -- Rod resources (older path)
-    CastAsync     = ReplicatedStorage:FindFirstChild("shared")
-                    and ReplicatedStorage.shared:FindFirstChild("modules")
-                    and ReplicatedStorage.shared.modules:FindFirstChild("fishing")
-                    and ReplicatedStorage.shared.modules.fishing:FindFirstChild("rodresources")
-                    and ReplicatedStorage.shared.modules.fishing.rodresources:FindFirstChild("events")
-                    and ReplicatedStorage.shared.modules.fishing.rodresources.events:FindFirstChild("castAsync"),
-    CatchFinish   = ReplicatedStorage:FindFirstChild("shared")
-                    and ReplicatedStorage.shared:FindFirstChild("modules")
-                    and ReplicatedStorage.shared.modules:FindFirstChild("fishing")
-                    and ReplicatedStorage.shared.modules.fishing:FindFirstChild("rodresources")
-                    and ReplicatedStorage.shared.modules.fishing.rodresources:FindFirstChild("events")
-                    and ReplicatedStorage.shared.modules.fishing.rodresources.events:FindFirstChild("catchfinish"),
-    -- Teleport
+    CastAsync     = rodEvents and rodEvents:FindFirstChild("castAsync"),
+    CatchFinish   = rodEvents and rodEvents:FindFirstChild("catchfinish"),
     RequestTp     = R("RE/RequestTeleport"),
     GetSpawn      = R("RF/GetSpawnPosition"),
     GetZone       = R("RF/GetZone"),
     DeepTp        = R("RF/Deep/Teleport"),
     MarianasTp    = R("RF/MarianasVeil/Teleport"),
-    -- Backpack
     Equip         = R("RE/Backpack/Equip"),
     Favorite      = R("RE/Backpack/Favourite"),
-    -- Inventory-ish
     ReturnSurface = R("RE/ReturnToSurface"),
 }
 
--- Safe fire helpers
+-- Safe fire helpers (VARARG FIXED)
 local function fire(remote, ...)
     if not remote then return false, "missing" end
-    local ok, err = pcall(function() remote:FireServer(...) end)
+    local args = {...}
+    local ok, err = pcall(function() remote:FireServer(table.unpack(args)) end)
     return ok, err
 end
 
 local function invoke(remote, ...)
     if not remote then return false, "missing" end
-    local ok, res = pcall(function() return remote:InvokeServer(...) end)
+    local args = {...}
+    local ok, res = pcall(function() return remote:InvokeServer(table.unpack(args)) end)
     return ok, res
 end
 
 --// ============ CLEANUP ============
-if CoreGui:FindFirstChild("PopkaHub") then
-    CoreGui.PopkaHub:Destroy()
+local function safeParent(gui)
+    -- Try CoreGui first, fall back to PlayerGui
+    local ok = pcall(function() gui.Parent = CoreGui end)
+    if not ok or gui.Parent == nil then
+        gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    end
 end
+
+local existing = CoreGui:FindFirstChild("PopkaHub") or LocalPlayer.PlayerGui:FindFirstChild("PopkaHub")
+if existing then existing:Destroy() end
 
 --// ============ THEME ============
 local Theme = {
@@ -126,7 +132,8 @@ local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "PopkaHub"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent = CoreGui
+ScreenGui.DisplayOrder = 999
+safeParent(ScreenGui)
 
 local Main = Instance.new("Frame")
 Main.Size = UDim2.new(0, 500, 0, 360)
@@ -143,7 +150,6 @@ local MainStroke = Instance.new("UIStroke", Main)
 MainStroke.Color = Color3.fromRGB(45, 45, 55)
 MainStroke.Thickness = 1
 
--- Title bar
 local TitleBar = Instance.new("Frame")
 TitleBar.Size = UDim2.new(1, 0, 0, 40)
 TitleBar.BackgroundColor3 = Theme.Panel
@@ -162,7 +168,7 @@ local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, -100, 1, 0)
 TitleLabel.Position = UDim2.new(0, 15, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "🍑 Popka Hub  •  Fisch Tester"
+TitleLabel.Text = "Popka Hub  |  Fisch Tester"
 TitleLabel.TextColor3 = Theme.Accent
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 15
@@ -174,7 +180,7 @@ MinBtn.Size = UDim2.new(0, 26, 0, 26)
 MinBtn.Position = UDim2.new(1, -66, 0, 7)
 MinBtn.BackgroundColor3 = Theme.Element
 MinBtn.BorderSizePixel = 0
-MinBtn.Text = "−"
+MinBtn.Text = "-"
 MinBtn.TextColor3 = Theme.Text
 MinBtn.Font = Enum.Font.GothamBold
 MinBtn.TextSize = 16
@@ -186,14 +192,13 @@ CloseBtn.Size = UDim2.new(0, 26, 0, 26)
 CloseBtn.Position = UDim2.new(1, -34, 0, 7)
 CloseBtn.BackgroundColor3 = Theme.Element
 CloseBtn.BorderSizePixel = 0
-CloseBtn.Text = "×"
+CloseBtn.Text = "x"
 CloseBtn.TextColor3 = Theme.Text
 CloseBtn.Font = Enum.Font.GothamBold
 CloseBtn.TextSize = 16
 CloseBtn.Parent = TitleBar
 Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 6)
 
--- Tab bar
 local TabBar = Instance.new("Frame")
 TabBar.Size = UDim2.new(1, -20, 0, 32)
 TabBar.Position = UDim2.new(0, 10, 0, 48)
@@ -208,7 +213,6 @@ TabLayout.Padding = UDim.new(0, 4)
 TabLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 TabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 
--- Tab container
 local TabContainer = Instance.new("Frame")
 TabContainer.Size = UDim2.new(1, -20, 1, -100)
 TabContainer.Position = UDim2.new(0, 10, 0, 90)
@@ -476,7 +480,7 @@ makeSlider(fishPage, "Cast Cooldown (s)", 1, 10, 2, function(v) Config.Fish.Cast
 makeSlider(fishPage, "Reel Cooldown (s)", 1, 10, 2, function(v) Config.Fish.ReelCooldown = v end)
 
 makeSection(fishPage, "TEST ACTIONS")
-makeButton(fishPage, "Manual Cast (Fire Cast RF)", function()
+makeButton(fishPage, "Manual Cast", function()
     local ok, err = invoke(Remotes.Cast)
     print("[Popka] Cast:", ok, err)
 end)
@@ -576,8 +580,6 @@ makeButton(profilePage, "Unload Popka Hub", function()
 end, Theme.Danger)
 
 --// ============ FUNCTIONALITY ============
-
--- Speed loop
 RunService.Heartbeat:Connect(function()
     if Config.Misc.SpeedEnabled then
         local char = LocalPlayer.Character
@@ -588,7 +590,6 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- Noclip loop
 RunService.Stepped:Connect(function()
     if Config.Misc.NoclipEnabled then
         local char = LocalPlayer.Character
@@ -602,7 +603,6 @@ RunService.Stepped:Connect(function()
     end
 end)
 
--- Infinite Jump
 UserInputService.JumpRequest:Connect(function()
     if Config.Misc.InfiniteJump then
         local char = LocalPlayer.Character
@@ -613,7 +613,6 @@ UserInputService.JumpRequest:Connect(function()
     end
 end)
 
--- Fly
 local flyGyro, flyVel
 local function startFly()
     local char = LocalPlayer.Character
@@ -645,12 +644,12 @@ RunService.RenderStepped:Connect(function()
         if flyGyro and flyVel then
             flyGyro.CFrame = Camera.CFrame
             local dir = Vector3.zero
-            if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir += Camera.CFrame.LookVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir -= Camera.CFrame.LookVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir -= Camera.CFrame.RightVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir += Camera.CFrame.RightVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir += Vector3.new(0,1,0) end
-            if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir -= Vector3.new(0,1,0) end
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + Camera.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir - Camera.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir - Camera.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + Camera.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.new(0,1,0) end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir = dir - Vector3.new(0,1,0) end
             flyVel.Velocity = dir * Config.Misc.FlySpeed
         end
     else
@@ -658,7 +657,6 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Anti-AFK
 LocalPlayer.Idled:Connect(function()
     if Config.Misc.AntiAFK then
         VirtualUser:CaptureController()
@@ -666,7 +664,6 @@ LocalPlayer.Idled:Connect(function()
     end
 end)
 
--- Auto farm loop
 local lastCast = 0
 local lastReel = 0
 
@@ -681,18 +678,35 @@ RunService.Heartbeat:Connect(function()
 
     if Config.Fish.AutoCast and now - lastCast >= Config.Fish.CastCooldown then
         lastCast = now
-        pcall(function() if Remotes.Cast then Remotes.Cast:InvokeServer() end end)
+        if Remotes.Cast then pcall(function() Remotes.Cast:InvokeServer() end) end
     end
 
     if Config.Fish.AutoReel and now - lastReel >= Config.Fish.ReelCooldown then
         lastReel = now
-        pcall(function() if Remotes.ReelStart then Remotes.ReelStart:InvokeServer() end end)
+        if Remotes.ReelStart then pcall(function() Remotes.ReelStart:InvokeServer() end) end
         task.wait(0.3)
-        pcall(function() if Remotes.ReelFinish then Remotes.ReelFinish:FireServer() end end)
+        if Remotes.ReelFinish then pcall(function() Remotes.ReelFinish:FireServer() end) end
+    end
+end)
+
+--// ============ BUTTON HOOKS ============
+CloseBtn.MouseButton1Click:Connect(function()
+    ScreenGui:Destroy()
+end)
+
+local minimized = false
+MinBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    if minimized then
+        Main.Size = UDim2.new(0, 500, 0, 40)
+        MinBtn.Text = "+"
+    else
+        Main.Size = UDim2.new(0, 500, 0, 360)
+        MinBtn.Text = "-"
     end
 end)
 
 --// ============ INIT ============
 switchTab("Fish")
-print("[Popka Hub] Loaded • User:", LocalPlayer.Name)
+print("[Popka Hub] Loaded - User:", LocalPlayer.Name)
 print("[Popka Hub] Remotes resolved:", found, "/", total)
