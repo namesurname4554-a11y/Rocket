@@ -1,6 +1,6 @@
 --// ============================================
---//  Popka Hub v4 — Fisch Tester
---//  Fixed: Collapse, Arg capture, More tabs
+--//  Popka Hub v5 — Fisch Tester
+--//  No logger • Fixed Auto Fish • Teleport/GPS • More
 --// ============================================
 
 local Players            = game:GetService("Players")
@@ -11,6 +11,7 @@ local ReplicatedStorage  = game:GetService("ReplicatedStorage")
 local CoreGui            = game:GetService("CoreGui")
 local VirtualUser        = game:GetService("VirtualUser")
 local Lighting           = game:GetService("Lighting")
+local TweenService       = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera      = Workspace.CurrentCamera
@@ -19,32 +20,50 @@ local Camera      = Workspace.CurrentCamera
 local Config = {
     Fish = {
         AutoFish      = false,
+        AutoSell      = false,
+        AutoCast      = false,
+        AutoReel      = false,
+        AutoShake     = false,
         CastCooldown  = 2,
-        ReelCooldown  = 2,
-        ShakeDelay    = 0.15,
-        CastArgs      = {},  -- captured args
-        ReelArgs      = {},
-        ShakeArgs     = {},
+        ReelCooldown  = 1.5,
+        ShakeDelay    = 0.1,
     },
-    Misc = {
+    Movement = {
         SpeedEnabled  = false,
         SpeedValue    = 50,
+        JumpEnabled   = false,
+        JumpValue     = 100,
         FlyEnabled    = false,
         FlySpeed      = 80,
-        NoclipEnabled = false,
+        FlyKeys       = {W=false,A=false,S=false,D=false,Space=false,LCtrl=false},
+        Noclip        = false,
         InfiniteJump  = false,
-        AntiAFK       = true,
-        Fullbright    = false,
         ClickTP       = false,
+        SwimSpeed     = false,
+    },
+    Teleport = {
+        Selected = "Spawn",
+        GPSEnabled = false,
+        GPSTarget = nil,
     },
     Visual = {
-        ESP = false,
-        Tracers = false,
-        Nametags = false,
+        PlayerESP     = false,
+        Nametags      = false,
+        FishESP       = false,
+        Fullbright    = false,
+        NoFog         = false,
+        CameraFOV     = 70,
     },
-    Logger = {
-        Enabled = false,
+    Misc = {
+        AntiAFK       = true,
+        AutoReconnect = false,
+        AntiFling     = false,
+        InfiniteYield = false,
     },
+    UI = {
+        Accent = Color3.fromRGB(255, 100, 150),
+        Transparency = 0,
+    }
 }
 
 --// ============ REMOTES ============
@@ -66,29 +85,33 @@ do
 end
 
 local Remotes = {
-    CastAsync    = rodEvents and rodEvents:FindFirstChild("castAsync"),
-    CatchFinish  = rodEvents and rodEvents:FindFirstChild("catchfinish"),
-    HandleBobber = rodEvents and rodEvents:FindFirstChild("handlebobber"),
-    BreakBobber  = rodEvents and rodEvents:FindFirstChild("breakbobber"),
-    ResetRod     = rodEvents and rodEvents:FindFirstChild("reset"),
-    CastRod      = R("RF/FishingRod/Cast"),
-    ReelStart    = R("RF/Reel/Start"),
-    ReelFinish   = R("RE/Reel/Finish"),
-    ReelAbort    = R("RE/Reel/Abort"),
-    LureStart    = R("RF/LureShake/Start"),
-    LureStop     = R("RE/LureShake/Stop"),
-    LureShake    = R("RE/LureShake/Shake"),
-    StabStart    = R("RF/Stab/Start"),
-    StabFinish   = R("RE/Stab/Finish"),
-    StabAbort    = R("RE/Stab/Abort"),
-    RequestTp    = R("RE/RequestTeleport"),
-    GetSpawn     = R("RF/GetSpawnPosition"),
-    GetZone      = R("RF/GetZone"),
-    DeepTp       = R("RF/Deep/Teleport"),
-    MarianasTp   = R("RF/MarianasVeil/Teleport"),
-    ReturnSurface= R("RE/ReturnToSurface"),
-    Equip        = R("RE/Backpack/Equip"),
-    Favorite     = R("RE/Backpack/Favourite"),
+    CastAsync     = rodEvents and rodEvents:FindFirstChild("castAsync"),
+    CatchFinish   = rodEvents and rodEvents:FindFirstChild("catchfinish"),
+    HandleBobber  = rodEvents and rodEvents:FindFirstChild("handlebobber"),
+    BreakBobber   = rodEvents and rodEvents:FindFirstChild("breakbobber"),
+    ResetRod      = rodEvents and rodEvents:FindFirstChild("reset"),
+    CastRod       = R("RF/FishingRod/Cast"),
+    ReelStart     = R("RF/Reel/Start"),
+    ReelFinish    = R("RE/Reel/Finish"),
+    ReelAbort     = R("RE/Reel/Abort"),
+    LureStart     = R("RF/LureShake/Start"),
+    LureStop      = R("RE/LureShake/Stop"),
+    LureShake     = R("RE/LureShake/Shake"),
+    StabStart     = R("RF/Stab/Start"),
+    StabFinish    = R("RE/Stab/Finish"),
+    StabAbort     = R("RE/Stab/Abort"),
+    RequestTp     = R("RE/RequestTeleport"),
+    GetSpawn      = R("RF/GetSpawnPosition"),
+    GetZone       = R("RF/GetZone"),
+    DeepTp        = R("RF/Deep/Teleport"),
+    MarianasTp    = R("RF/MarianasVeil/Teleport"),
+    ReturnSurface = R("RE/ReturnToSurface"),
+    Equip         = R("RE/Backpack/Equip"),
+    Favorite      = R("RE/Backpack/Favourite"),
+    BoatsSpawn    = R("RF/Boats/Spawn"),
+    BoatsDespawn  = R("RE/Boats/Despawn"),
+    FastTravel    = R("RE/FastTravel/ToggleUI"),
+    FT_Fade       = R("RE/FastTravel/Fade"),
 }
 
 local function fire(remote, ...)
@@ -105,87 +128,23 @@ local function invoke(remote, ...)
     return ok, res
 end
 
---// ============ ARG LOGGER ============
--- Hooks remotes so we can see what args the game actually sends
-local hookEnabled = false
-local hookConnections = {}
-local logBuffer = {}
-
-local function setupHook()
-    if hookEnabled then return end
-    hookEnabled = true
-
-    -- Log which remotes we can hook
-    local targets = {}
-    for name, r in pairs(Remotes) do
-        if r then targets[r] = name end
-    end
-
-    -- Hook via metatable (if getrawmetatable exists)
-    if getrawmetatable and setreadonly and hookmetamethod then
-        local mt = getrawmetatable(game)
-        local oldNamecall = mt.__namecall
-        setreadonly(mt, false)
-        mt.__namecall = newcclosure(function(self, ...)
-            local method = getnamecallmethod()
-            local name = targets[self]
-            if name and (method == "FireServer" or method == "InvokeServer") then
-                local args = {...}
-                local argStr = ""
-                for i, a in ipairs(args) do
-                    argStr = argStr .. tostring(a) .. (i < #args and ", " or "")
-                end
-                local line = "[HOOK] " .. name .. ":" .. method .. "(" .. argStr .. ")"
-                table.insert(logBuffer, line)
-                if #logBuffer > 50 then table.remove(logBuffer, 1) end
-                print(line)
-            end
-            return oldNamecall(self, ...)
-        end)
-        setreadonly(mt, true)
-        print("[Popka Hook] Installed via getrawmetatable")
-    elseif hookfunction and getnamecallmethod then
-        print("[Popka Hook] getrawmetatable not available — using alternative")
-        -- Some executors only support hookmetamethod
-        local ok = pcall(function()
-            local mt = getrawmetatable(game)
-            local old = mt.__namecall
-            mt.__namecall = newcclosure(function(self, ...)
-                local method = getnamecallmethod()
-                local name = targets[self]
-                if name then
-                    local args = {...}
-                    local argStr = ""
-                    for i, a in ipairs(args) do
-                        argStr = argStr .. tostring(a) .. (i < #args and ", " or "")
-                    end
-                    print("[HOOK]", name, method, argStr)
-                end
-                return old(self, ...)
-            end)
-        end)
-        if not ok then print("[Popka Hook] Failed to install hook") end
-    else
-        print("[Popka Hook] Executor doesn't support metatable hooks")
-    end
-end
-
 --// ============ CLEANUP ============
-local old = CoreGui:FindFirstChild("PopkaHub")
-if old then old:Destroy() end
-local old2 = LocalPlayer.PlayerGui:FindFirstChild("PopkaHub")
-if old2 then old2:Destroy() end
+for _, g in ipairs({CoreGui, LocalPlayer:WaitForChild("PlayerGui")}) do
+    local old = g:FindFirstChild("PopkaHub")
+    if old then old:Destroy() end
+end
 
 --// ============ THEME ============
 local Theme = {
     Bg        = Color3.fromRGB(18, 18, 22),
     Panel     = Color3.fromRGB(26, 26, 32),
     Element   = Color3.fromRGB(36, 36, 44),
-    Accent    = Color3.fromRGB(255, 100, 150),
+    Accent    = Config.UI.Accent,
     Text      = Color3.fromRGB(235, 235, 240),
     Subtext   = Color3.fromRGB(150, 150, 165),
     ToggleOff = Color3.fromRGB(55, 55, 65),
     Danger    = Color3.fromRGB(230, 80, 80),
+    Success   = Color3.fromRGB(100, 220, 120),
 }
 
 --// ============ GUI ============
@@ -196,17 +155,17 @@ ScreenGui.DisplayOrder = 999
 pcall(function() ScreenGui.Parent = CoreGui end)
 if not ScreenGui.Parent then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
-local FULL_SIZE  = UDim2.new(0, 540, 0, 420)
-local MINI_SIZE  = UDim2.new(0, 540, 0, 40)
+local FULL_SIZE = UDim2.new(0, 580, 0, 440)
+local MINI_SIZE = UDim2.new(0, 580, 0, 40)
 
 local Main = Instance.new("Frame")
 Main.Size = FULL_SIZE
-Main.Position = UDim2.new(0.5, -270, 0.5, -210)
+Main.Position = UDim2.new(0.5, -290, 0.5, -220)
 Main.BackgroundColor3 = Theme.Bg
 Main.BorderSizePixel = 0
 Main.Active = true
 Main.Draggable = true
-Main.ClipsDescendants = true   -- IMPORTANT for collapse
+Main.ClipsDescendants = true
 Main.Parent = ScreenGui
 Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 12)
 
@@ -214,7 +173,6 @@ local MainStroke = Instance.new("UIStroke", Main)
 MainStroke.Color = Color3.fromRGB(45, 45, 55)
 
 local TitleBar = Instance.new("Frame")
-TitleBar.Name = "TitleBar"
 TitleBar.Size = UDim2.new(1, 0, 0, 40)
 TitleBar.BackgroundColor3 = Theme.Panel
 TitleBar.BorderSizePixel = 0
@@ -232,7 +190,7 @@ local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, -100, 1, 0)
 TitleLabel.Position = UDim2.new(0, 15, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "Popka Hub v4  |  Fisch Tester"
+TitleLabel.Text = "Popka Hub v5  |  Fisch Tester"
 TitleLabel.TextColor3 = Theme.Accent
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 15
@@ -263,13 +221,10 @@ CloseBtn.TextSize = 16
 CloseBtn.Parent = TitleBar
 Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 6)
 
--- Content wrapper (this is what we hide on collapse)
 local ContentWrap = Instance.new("Frame")
-ContentWrap.Name = "ContentWrap"
 ContentWrap.Size = UDim2.new(1, 0, 1, -40)
 ContentWrap.Position = UDim2.new(0, 0, 0, 40)
 ContentWrap.BackgroundTransparency = 1
-ContentWrap.Visible = true
 ContentWrap.Parent = Main
 
 local TabBar = Instance.new("Frame")
@@ -282,7 +237,7 @@ Instance.new("UICorner", TabBar).CornerRadius = UDim.new(0, 8)
 
 local TabLayout = Instance.new("UIListLayout", TabBar)
 TabLayout.FillDirection = Enum.FillDirection.Horizontal
-TabLayout.Padding = UDim.new(0, 4)
+TabLayout.Padding = UDim.new(0, 3)
 TabLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 TabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 
@@ -294,7 +249,7 @@ TabContainer.Parent = ContentWrap
 
 local Pages = {}
 local TabButtons = {}
-local TabOrder = {"Fish", "Misc", "Visual", "Customize", "Logger", "Profile"}
+local TabOrder = {"Fish", "Movement", "Teleport", "Visual", "Misc", "Customize", "Profile"}
 
 local function createPage(name)
     local page = Instance.new("ScrollingFrame")
@@ -326,7 +281,7 @@ end
 for _, name in ipairs(TabOrder) do
     createPage(name)
     local tb = Instance.new("TextButton")
-    tb.Size = UDim2.new(0, 78, 0, 24)
+    tb.Size = UDim2.new(0, 76, 0, 24)
     tb.BackgroundColor3 = Theme.Element
     tb.BorderSizePixel = 0
     tb.Text = name
@@ -533,66 +488,187 @@ end
 --// ============ FISH PAGE ============
 local fishPage = Pages["Fish"]
 
-makeSection(fishPage, "AUTO FISH")
-makeToggle(fishPage, "Auto Fish (all-in-one)", false, function(v) Config.Fish.AutoFish = v end)
+makeSection(fishPage, "AUTO FISH (all-in-one)")
+makeToggle(fishPage, "Auto Fish", false, function(v) Config.Fish.AutoFish = v end)
 makeSlider(fishPage, "Cast Cooldown", 1, 10, 2, function(v) Config.Fish.CastCooldown = v end)
-makeSlider(fishPage, "Shake Delay (ms)", 50, 500, 150, function(v) Config.Fish.ShakeDelay = v / 1000 end)
+makeSlider(fishPage, "Reel Cooldown", 1, 10, 2, function(v) Config.Fish.ReelCooldown = v end)
+makeSlider(fishPage, "Shake Delay (ms)", 50, 500, 100, function(v) Config.Fish.ShakeDelay = v / 1000 end)
 
-makeSection(fishPage, "MANUAL (with default args)")
-makeButton(fishPage, "Cast (no args)", function()
+makeSection(fishPage, "INDIVIDUAL AUTO")
+makeToggle(fishPage, "Auto Cast", false, function(v) Config.Fish.AutoCast = v end)
+makeToggle(fishPage, "Auto Reel", false, function(v) Config.Fish.AutoReel = v end)
+makeToggle(fishPage, "Auto Shake", false, function(v) Config.Fish.AutoShake = v end)
+makeToggle(fishPage, "Auto Sell", false, function(v) Config.Fish.AutoSell = v end)
+
+makeSection(fishPage, "MANUAL ACTIONS")
+makeButton(fishPage, "Cast Rod", function()
     local ok, err = invoke(Remotes.CastAsync)
-    print("[Popka] CastAsync:", ok, err)
+    if not ok then invoke(Remotes.CastRod) end
+    print("[Popka] Cast done")
 end)
-makeButton(fishPage, "Reel Start", function()
-    local ok, err = invoke(Remotes.ReelStart)
-    print("[Popka] ReelStart:", ok, err)
-end)
-makeButton(fishPage, "Reel Finish", function()
-    local ok, err = fire(Remotes.ReelFinish)
-    print("[Popka] ReelFinish:", ok, err)
-end)
-makeButton(fishPage, "Shake (random)", function()
+makeButton(fishPage, "Reel Start", function() invoke(Remotes.ReelStart) end)
+makeButton(fishPage, "Reel Finish", function() fire(Remotes.ReelFinish) end)
+makeButton(fishPage, "Shake Once", function()
     fire(Remotes.LureShake, Vector2.new(math.random(-100,100), math.random(-100,100)))
 end)
+makeButton(fishPage, "Abort Reel", function() fire(Remotes.ReelAbort) end)
+makeButton(fishPage, "Reset Rod", function() fire(Remotes.ResetRod) end)
+makeButton(fishPage, "Break Bobber", function() fire(Remotes.BreakBobber) end)
 
-makeSection(fishPage, "MANUAL (with captured args)")
-makeButton(fishPage, "Replay last Cast", function()
-    if #Config.Fish.CastArgs > 0 then
-        invoke(Remotes.CastAsync, table.unpack(Config.Fish.CastArgs))
-    else
-        print("[Popka] No captured Cast args — enable Logger and cast manually first")
-    end
-end)
-makeButton(fishPage, "Replay last Shake", function()
-    if #Config.Fish.ShakeArgs > 0 then
-        fire(Remotes.LureShake, table.unpack(Config.Fish.ShakeArgs))
-    else
-        print("[Popka] No captured Shake args")
-    end
-end)
+makeSection(fishPage, "MINIGAMES")
+makeButton(fishPage, "Lure Start", function() invoke(Remotes.LureStart) end)
+makeButton(fishPage, "Lure Stop", function() fire(Remotes.LureStop) end)
+makeButton(fishPage, "Stab Start", function() invoke(Remotes.StabStart) end)
+makeButton(fishPage, "Stab Finish", function() fire(Remotes.StabFinish) end)
 
---// ============ MISC PAGE ============
-local miscPage = Pages["Misc"]
+--// ============ MOVEMENT PAGE ============
+local movePage = Pages["Movement"]
 
-makeSection(miscPage, "MOVEMENT")
-makeToggle(miscPage, "Speed Hack", false, function(v)
-    Config.Misc.SpeedEnabled = v
+makeSection(movePage, "SPEED")
+makeToggle(movePage, "Speed Hack", false, function(v)
+    Config.Movement.SpeedEnabled = v
     local char = LocalPlayer.Character
     if char then
         local hum = char:FindFirstChildOfClass("Humanoid")
-        if hum then hum.WalkSpeed = v and Config.Misc.SpeedValue or 16 end
+        if hum then hum.WalkSpeed = v and Config.Movement.SpeedValue or 16 end
     end
 end)
-makeSlider(miscPage, "Speed Value", 16, 300, 50, function(v) Config.Misc.SpeedValue = v end)
-makeToggle(miscPage, "Noclip", false, function(v) Config.Misc.NoclipEnabled = v end)
-makeToggle(miscPage, "Infinite Jump", false, function(v) Config.Misc.InfiniteJump = v end)
+makeSlider(movePage, "Speed Value", 16, 500, 50, function(v) Config.Movement.SpeedValue = v end)
+makeToggle(movePage, "Swim Speed (affects swim)", false, function(v) Config.Movement.SwimSpeed = v end)
 
-makeSection(miscPage, "FLY (v4 method)")
-makeToggle(miscPage, "Fly", false, function(v) Config.Misc.FlyEnabled = v end)
-makeSlider(miscPage, "Fly Speed", 20, 500, 80, function(v) Config.Misc.FlySpeed = v end)
+makeSection(movePage, "JUMP")
+makeToggle(movePage, "Jump Power Hack", false, function(v)
+    Config.Movement.JumpEnabled = v
+    local char = LocalPlayer.Character
+    if char then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then hum.JumpPower = v and Config.Movement.JumpValue or 50 end
+    end
+end)
+makeSlider(movePage, "Jump Power", 50, 500, 100, function(v) Config.Movement.JumpValue = v end)
+makeToggle(movePage, "Infinite Jump", false, function(v) Config.Movement.InfiniteJump = v end)
 
-makeSection(miscPage, "MISC")
-makeToggle(miscPage, "Fullbright", false, function(v)
+makeSection(movePage, "FLY")
+makeToggle(movePage, "Fly", false, function(v) Config.Movement.FlyEnabled = v end)
+makeSlider(movePage, "Fly Speed", 20, 500, 80, function(v) Config.Movement.FlySpeed = v end)
+
+makeSection(movePage, "OTHER")
+makeToggle(movePage, "Noclip", false, function(v) Config.Movement.Noclip = v end)
+makeToggle(movePage, "Click Teleport", false, function(v) Config.Movement.ClickTP = v end)
+makeButton(movePage, "Reset Character", function()
+    local char = LocalPlayer.Character
+    if char then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then hum.Health = 0 end
+    end
+end)
+
+--// ============ TELEPORT PAGE ============
+local tpPage = Pages["Teleport"]
+
+makeSection(tpPage, "PRESET LOCATIONS")
+local tpLocations = {
+    ["Spawn"]        = nil,
+    ["Return Surface"] = "surface",
+    ["The Depths"]   = "deep",
+    ["Marianas Veil"]= "marianas",
+    ["Fast Travel"]  = "fasttravel",
+}
+
+for name, mode in pairs(tpLocations) do
+    makeButton(tpPage, "Teleport: " .. name, function()
+        if name == "Spawn" then
+            local ok, pos = invoke(Remotes.GetSpawn)
+            if ok and pos then fire(Remotes.RequestTp, pos) end
+        elseif name == "Return Surface" then
+            fire(Remotes.ReturnSurface)
+        elseif name == "The Depths" then
+            invoke(Remotes.DeepTp)
+        elseif name == "Marianas Veil" then
+            invoke(Remotes.MarianasTp)
+        elseif name == "Fast Travel" then
+            fire(Remotes.FastTravel)
+        end
+        print("[Popka] Teleport:", name)
+    end)
+end
+
+makeSection(tpPage, "GPS")
+makeToggle(tpPage, "Show GPS Waypoint", false, function(v)
+    Config.Teleport.GPSEnabled = v
+end)
+makeButton(tpPage, "Set GPS to Nearest Player", function()
+    local closest, minDist = nil, math.huge
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+            local dist = (LocalPlayer.Character.HumanoidRootPart.Position - plr.Character.HumanoidRootPart.Position).Magnitude
+            if dist < minDist then
+                minDist = dist
+                closest = plr
+            end
+        end
+    end
+    if closest then
+        Config.Teleport.GPSTarget = closest.Character.HumanoidRootPart
+        print("[Popka] GPS locked to:", closest.Name)
+    end
+end)
+
+local gpsGui = Instance.new("BillboardGui")
+gpsGui.Size = UDim2.new(0, 150, 0, 60)
+gpsGui.AlwaysOnTop = true
+gpsGui.Enabled = false
+gpsGui.Name = "PopkaGPS"
+
+local gpsFrame = Instance.new("Frame", gpsGui)
+gpsFrame.Size = UDim2.new(1, 0, 1, 0)
+gpsFrame.BackgroundTransparency = 0.4
+gpsFrame.BackgroundColor3 = Theme.Accent
+Instance.new("UICorner", gpsFrame).CornerRadius = UDim.new(0, 8)
+
+local gpsLabel = Instance.new("TextLabel", gpsGui)
+gpsLabel.Size = UDim2.new(1, 0, 1, 0)
+gpsLabel.BackgroundTransparency = 1
+gpsLabel.Text = "GPS"
+gpsLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+gpsLabel.Font = Enum.Font.GothamBold
+gpsLabel.TextSize = 14
+
+makeSection(tpPage, "DIRECT CFrame TELEPORT")
+makeButton(tpPage, "TP to Cursor (Raycast)", function()
+    local mouse = LocalPlayer:GetMouse()
+    local target = mouse.Hit
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        char.HumanoidRootPart.CFrame = CFrame.new(target.Position + Vector3.new(0, 3, 0))
+    end
+end)
+makeButton(tpPage, "TP to Random Player", function()
+    local players = {}
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            table.insert(players, p)
+        end
+    end
+    if #players > 0 then
+        local target = players[math.random(1, #players)]
+        LocalPlayer.Character.HumanoidRootPart.CFrame = target.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, -5)
+    end
+end)
+
+--// ============ VISUAL PAGE ============
+local visualPage = Pages["Visual"]
+
+makeSection(visualPage, "PLAYER ESP")
+makeToggle(visualPage, "Player ESP", false, function(v) Config.Visual.PlayerESP = v end)
+makeToggle(visualPage, "Nametags", false, function(v) Config.Visual.Nametags = v end)
+
+makeSection(visualPage, "FISH ESP")
+makeToggle(visualPage, "Fish ESP (shiny)", false, function(v) Config.Visual.FishESP = v end)
+
+makeSection(visualPage, "WORLD")
+makeToggle(visualPage, "Fullbright", false, function(v)
+    Config.Visual.Fullbright = v
     if v then
         Lighting.Ambient = Color3.fromRGB(200,200,200)
         Lighting.Brightness = 3
@@ -604,62 +680,70 @@ makeToggle(miscPage, "Fullbright", false, function(v)
         Lighting.OutdoorAmbient = Color3.fromRGB(128,128,128)
     end
 end)
-makeToggle(miscPage, "Anti-AFK", true, function(v) Config.Misc.AntiAFK = v end)
+makeToggle(visualPage, "No Fog", false, function(v)
+    if v then
+        Lighting.FogEnd = 1e10
+        Lighting.FogStart = 1e10
+    else
+        Lighting.FogEnd = 100000
+        Lighting.FogStart = 0
+    end
+end)
+makeSlider(visualPage, "Camera FOV", 70, 120, 70, function(v)
+    Camera.FieldOfView = v
+end)
 
---// ============ VISUAL PAGE (NEW) ============
-local visualPage = Pages["Visual"]
-
-makeSection(visualPage, "PLAYER ESP")
-makeToggle(visualPage, "ESP Boxes", false, function(v) Config.Visual.ESP = v end)
-makeToggle(visualPage, "Nametags", false, function(v) Config.Visual.Nametags = v end)
-makeToggle(visualPage, "Tracers", false, function(v) Config.Visual.Tracers = v end)
-
--- ESP state
+-- ESP implementation
 local espCache = {}
-local tracerCache = {}
-
 local function createESP(plr)
     if plr == LocalPlayer then return end
     if espCache[plr] then return end
-
     local char = plr.Character
     if not char or not char:FindFirstChild("HumanoidRootPart") then return end
 
-    local billboard = Instance.new("BillboardGui")
-    billboard.Name = "PopkaESP"
-    billboard.Size = UDim2.new(0, 100, 0, 50)
-    billboard.StudsOffset = Vector3.new(0, 3, 0)
-    billboard.AlwaysOnTop = true
-    billboard.Adornee = char:FindFirstChild("Head") or char.HumanoidRootPart
-    billboard.Parent = char
+    local hl = Instance.new("Highlight")
+    hl.Name = "PopkaESP"
+    hl.FillColor = Color3.fromRGB(255, 100, 150)
+    hl.FillTransparency = 0.7
+    hl.OutlineColor = Color3.fromRGB(255, 100, 150)
+    hl.OutlineTransparency = 0
+    hl.Adornee = char
+    hl.Parent = char
 
-    local nameLbl = Instance.new("TextLabel")
-    nameLbl.Size = UDim2.new(1, 0, 0.5, 0)
-    nameLbl.BackgroundTransparency = 1
-    nameLbl.Text = plr.Name
-    nameLbl.TextColor3 = Color3.fromRGB(255, 100, 150)
-    nameLbl.TextStrokeTransparency = 0
-    nameLbl.Font = Enum.Font.GothamBold
-    nameLbl.TextSize = 12
-    nameLbl.Parent = billboard
+    local bb = Instance.new("BillboardGui")
+    bb.Name = "PopkaNametag"
+    bb.Size = UDim2.new(0, 120, 0, 50)
+    bb.StudsOffset = Vector3.new(0, 3.5, 0)
+    bb.AlwaysOnTop = true
+    bb.Adornee = char:FindFirstChild("Head")
+    bb.Parent = char
 
-    local distLbl = Instance.new("TextLabel")
-    distLbl.Size = UDim2.new(1, 0, 0.5, 0)
-    distLbl.Position = UDim2.new(0, 0, 0.5, 0)
-    distLbl.BackgroundTransparency = 1
-    distLbl.Text = "0 studs"
-    distLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
-    distLbl.TextStrokeTransparency = 0
-    distLbl.Font = Enum.Font.Gotham
-    distLbl.TextSize = 11
-    distLbl.Parent = billboard
+    local nl = Instance.new("TextLabel", bb)
+    nl.Size = UDim2.new(1, 0, 0.5, 0)
+    nl.BackgroundTransparency = 1
+    nl.Text = plr.Name
+    nl.TextColor3 = Color3.fromRGB(255, 100, 150)
+    nl.TextStrokeTransparency = 0
+    nl.Font = Enum.Font.GothamBold
+    nl.TextSize = 12
 
-    espCache[plr] = {gui = billboard, distLbl = distLbl}
+    local dl = Instance.new("TextLabel", bb)
+    dl.Size = UDim2.new(1, 0, 0.5, 0)
+    dl.Position = UDim2.new(0, 0, 0.5, 0)
+    dl.BackgroundTransparency = 1
+    dl.Text = "0"
+    dl.TextColor3 = Color3.fromRGB(255, 255, 255)
+    dl.TextStrokeTransparency = 0
+    dl.Font = Enum.Font.Gotham
+    dl.TextSize = 11
+
+    espCache[plr] = {hl = hl, bb = bb, dist = dl}
 end
 
 local function removeESP(plr)
     if espCache[plr] then
-        if espCache[plr].gui then espCache[plr].gui:Destroy() end
+        if espCache[plr].hl then espCache[plr].hl:Destroy() end
+        if espCache[plr].bb then espCache[plr].bb:Destroy() end
         espCache[plr] = nil
     end
 end
@@ -668,34 +752,83 @@ for _, plr in ipairs(Players:GetPlayers()) do createESP(plr) end
 Players.PlayerAdded:Connect(createESP)
 Players.PlayerRemoving:Connect(removeESP)
 
-RunService.RenderStepped:Connect(function()
-    for plr, data in pairs(espCache) do
-        if not data.gui or not data.gui.Parent then
-            espCache[plr] = nil
-            continue
-        end
-        data.gui.Enabled = Config.Visual.ESP or Config.Visual.Nametags
-        local char = plr.Character
-        if char and char:FindFirstChild("HumanoidRootPart") then
-            local dist = math.floor((Camera.CFrame.Position - char.HumanoidRootPart.Position).Magnitude)
-            data.distLbl.Text = dist .. " studs"
+-- Fish ESP: highlight fish parts
+local fishHighlights = {}
+local function updateFishESP()
+    for _, h in pairs(fishHighlights) do h:Destroy() end
+    fishHighlights = {}
+
+    if not Config.Visual.FishESP then return end
+
+    local function scanModel(m)
+        if not m:IsA("Model") then return end
+        local name = m.Name:lower()
+        if name:find("fish") or name:find("shark") or name:find("whale") then
+            local hl = Instance.new("Highlight")
+            hl.FillColor = Color3.fromRGB(255, 215, 0)
+            hl.FillTransparency = 0.5
+            hl.OutlineColor = Color3.fromRGB(255, 215, 0)
+            hl.Adornee = m
+            hl.Parent = m
+            table.insert(fishHighlights, hl)
         end
     end
+
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        pcall(scanModel, obj)
+    end
+end
+
+task.spawn(function()
+    while ScreenGui.Parent do
+        task.wait(3)
+        if Config.Visual.FishESP then updateFishESP() end
+    end
+end)
+
+--// ============ MISC PAGE ============
+local miscPage = Pages["Misc"]
+
+makeSection(miscPage, "QUALITY OF LIFE")
+makeToggle(miscPage, "Anti-AFK", true, function(v) Config.Misc.AntiAFK = v end)
+makeToggle(miscPage, "Anti-Fling", false, function(v) Config.Misc.AntiFling = v end)
+makeToggle(miscPage, "Infinite Yield", false, function(v) Config.Misc.InfiniteYield = v end)
+makeToggle(miscPage, "Auto Reconnect", false, function(v) Config.Misc.AutoReconnect = v end)
+
+makeSection(miscPage, "INFO")
+makeButton(miscPage, "Print Character Info", function()
+    local char = LocalPlayer.Character
+    if char then
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hrp and hum then
+            print("[Popka] Pos:", hrp.Position)
+            print("[Popka] Health:", hum.Health)
+            print("[Popka] Speed:", hum.WalkSpeed)
+        end
+    end
+end)
+makeButton(miscPage, "Print Server Info", function()
+    print("[Popka] Players:", #Players:GetPlayers())
+    print("[Popka] Job ID:", game.JobId)
+    print("[Popka] Place ID:", game.PlaceId)
 end)
 
 --// ============ CUSTOMIZE PAGE ============
 local customizePage = Pages["Customize"]
 
-makeSection(customizePage, "ACCENT")
-local presets = {
+makeSection(customizePage, "ACCENT COLOR")
+local accents = {
     ["Pink"] = Color3.fromRGB(255,100,150),
     ["Cyan"] = Color3.fromRGB(100,220,255),
     ["Lime"] = Color3.fromRGB(150,255,100),
     ["Orange"] = Color3.fromRGB(255,160,60),
     ["Purple"] = Color3.fromRGB(180,120,255),
     ["Red"] = Color3.fromRGB(240,70,70),
+    ["Gold"] = Color3.fromRGB(255,215,0),
+    ["White"] = Color3.fromRGB(240,240,240),
 }
-for name, color in pairs(presets) do
+for name, color in pairs(accents) do
     makeButton(customizePage, "Accent: " .. name, function()
         Theme.Accent = color
         TitleLabel.TextColor3 = color
@@ -710,39 +843,18 @@ makeSlider(customizePage, "Main alpha (%)", 0, 100, 0, function(v)
     Main.BackgroundTransparency = v / 100
 end)
 
---// ============ LOGGER PAGE (NEW) ============
-local loggerPage = Pages["Logger"]
-
-makeSection(loggerPage, "ARGUMENT CAPTURE")
-makeToggle(loggerPage, "Enable Hook", false, function(v)
-    if v then
-        setupHook()
-        print("[Popka] Hook enabled")
-    else
-        print("[Popka] Hook disabled (restart script to fully unhook)")
-    end
+makeSection(customizePage, "THEME")
+makeButton(customizePage, "Theme: Dark", function()
+    Main.BackgroundColor3 = Color3.fromRGB(18,18,22)
+    TitleBar.BackgroundColor3 = Color3.fromRGB(26,26,32)
+    TitleFix.BackgroundColor3 = Color3.fromRGB(26,26,32)
+    TabBar.BackgroundColor3 = Color3.fromRGB(26,26,32)
 end)
-
-makeSection(loggerPage, "INSTRUCTIONS")
-local infoLbl = Instance.new("TextLabel")
-infoLbl.Size = UDim2.new(1, 0, 0, 90)
-infoLbl.BackgroundColor3 = Theme.Element
-infoLbl.BorderSizePixel = 0
-infoLbl.Text = "1. Enable Hook\n2. Play Fisch normally (cast, reel, shake)\n3. Watch the console for [HOOK] lines\n4. Those show the args the game sends\n5. Report them to update the panel"
-infoLbl.TextColor3 = Theme.Text
-infoLbl.Font = Enum.Font.Gotham
-infoLbl.TextSize = 11
-infoLbl.TextWrapped = true
-infoLbl.Parent = loggerPage
-Instance.new("UICorner", infoLbl).CornerRadius = UDim.new(0, 6)
-
-makeButton(loggerPage, "Print Captured Log", function()
-    for _, line in ipairs(logBuffer) do print(line) end
-end)
-
-makeButton(loggerPage, "Clear Log", function()
-    logBuffer = {}
-    print("[Popka] Log cleared")
+makeButton(customizePage, "Theme: Black", function()
+    Main.BackgroundColor3 = Color3.fromRGB(0,0,0)
+    TitleBar.BackgroundColor3 = Color3.fromRGB(8,8,8)
+    TitleFix.BackgroundColor3 = Color3.fromRGB(8,8,8)
+    TabBar.BackgroundColor3 = Color3.fromRGB(8,8,8)
 end)
 
 --// ============ PROFILE PAGE ============
@@ -752,38 +864,40 @@ makeSection(profilePage, "ACCOUNT")
 makeInfoRow(profilePage, "Username", LocalPlayer.Name)
 makeInfoRow(profilePage, "User ID", LocalPlayer.UserId)
 makeInfoRow(profilePage, "Account Age", LocalPlayer.AccountAge .. " days")
+makeInfoRow(profilePage, "Place ID", game.PlaceId)
 
-makeSection(profilePage, "TOOLS")
+makeSection(profilePage, "TESTER TOOLS")
 makeButton(profilePage, "Copy User ID", function()
     if setclipboard then setclipboard(tostring(LocalPlayer.UserId)) end
 end)
-makeButton(profilePage, "Unload", function() ScreenGui:Destroy() end, Theme.Danger)
+makeButton(profilePage, "Copy Job ID", function()
+    if setclipboard then setclipboard(game.JobId) end
+end)
+makeButton(profilePage, "Unload Popka Hub", function() ScreenGui:Destroy() end, Theme.Danger)
 
---// ============ FLY v4 — Direct CFrame ============
-local flyKeys = {W=false,A=false,S=false,D=false,Space=false,LCtrl=false}
-
+--// ============ FLY ============
 UserInputService.InputBegan:Connect(function(i, gp)
     if gp then return end
     local k = i.KeyCode
-    if k == Enum.KeyCode.W then flyKeys.W=true end
-    if k == Enum.KeyCode.A then flyKeys.A=true end
-    if k == Enum.KeyCode.S then flyKeys.S=true end
-    if k == Enum.KeyCode.D then flyKeys.D=true end
-    if k == Enum.KeyCode.Space then flyKeys.Space=true end
-    if k == Enum.KeyCode.LeftControl then flyKeys.LCtrl=true end
+    if k == Enum.KeyCode.W then Config.Movement.FlyKeys.W = true end
+    if k == Enum.KeyCode.A then Config.Movement.FlyKeys.A = true end
+    if k == Enum.KeyCode.S then Config.Movement.FlyKeys.S = true end
+    if k == Enum.KeyCode.D then Config.Movement.FlyKeys.D = true end
+    if k == Enum.KeyCode.Space then Config.Movement.FlyKeys.Space = true end
+    if k == Enum.KeyCode.LeftControl then Config.Movement.FlyKeys.LCtrl = true end
 end)
 UserInputService.InputEnded:Connect(function(i)
     local k = i.KeyCode
-    if k == Enum.KeyCode.W then flyKeys.W=false end
-    if k == Enum.KeyCode.A then flyKeys.A=false end
-    if k == Enum.KeyCode.S then flyKeys.S=false end
-    if k == Enum.KeyCode.D then flyKeys.D=false end
-    if k == Enum.KeyCode.Space then flyKeys.Space=false end
-    if k == Enum.KeyCode.LeftControl then flyKeys.LCtrl=false end
+    if k == Enum.KeyCode.W then Config.Movement.FlyKeys.W = false end
+    if k == Enum.KeyCode.A then Config.Movement.FlyKeys.A = false end
+    if k == Enum.KeyCode.S then Config.Movement.FlyKeys.S = false end
+    if k == Enum.KeyCode.D then Config.Movement.FlyKeys.D = false end
+    if k == Enum.KeyCode.Space then Config.Movement.FlyKeys.Space = false end
+    if k == Enum.KeyCode.LeftControl then Config.Movement.FlyKeys.LCtrl = false end
 end)
 
 RunService.Heartbeat:Connect(function()
-    if not Config.Misc.FlyEnabled then return end
+    if not Config.Movement.FlyEnabled then return end
     local char = LocalPlayer.Character
     if not char then return end
     local hrp = char:FindFirstChild("HumanoidRootPart")
@@ -791,18 +905,17 @@ RunService.Heartbeat:Connect(function()
     if not hrp or not hum then return end
 
     hum.PlatformStand = true
-
     local camCF = Camera.CFrame
+    local fk = Config.Movement.FlyKeys
     local move = Vector3.zero
-    if flyKeys.W then move = move + camCF.LookVector end
-    if flyKeys.S then move = move - camCF.LookVector end
-    if flyKeys.A then move = move - camCF.RightVector end
-    if flyKeys.D then move = move + camCF.RightVector end
-    if flyKeys.Space then move = move + Vector3.new(0,1,0) end
-    if flyKeys.LCtrl then move = move - Vector3.new(0,1,0) end
-
+    if fk.W then move = move + camCF.LookVector end
+    if fk.S then move = move - camCF.LookVector end
+    if fk.A then move = move - camCF.RightVector end
+    if fk.D then move = move + camCF.RightVector end
+    if fk.Space then move = move + Vector3.new(0,1,0) end
+    if fk.LCtrl then move = move - Vector3.new(0,1,0) end
     if move.Magnitude > 0 then
-        hrp.CFrame = hrp.CFrame + (move.Unit * Config.Misc.FlySpeed * (1/60))
+        hrp.CFrame = hrp.CFrame + (move.Unit * Config.Movement.FlySpeed * (1/60))
     end
     hrp.CFrame = CFrame.new(hrp.Position, hrp.Position + camCF.LookVector)
     hrp.Velocity = Vector3.zero
@@ -812,30 +925,37 @@ task.spawn(function()
     local was = false
     while ScreenGui.Parent do
         task.wait(0.2)
-        if was and not Config.Misc.FlyEnabled then
+        if was and not Config.Movement.FlyEnabled then
             local char = LocalPlayer.Character
             if char then
                 local hum = char:FindFirstChildOfClass("Humanoid")
                 if hum then hum.PlatformStand = false end
             end
         end
-        was = Config.Misc.FlyEnabled
+        was = Config.Movement.FlyEnabled
     end
 end)
 
 --// ============ LOOPS ============
 RunService.Heartbeat:Connect(function()
-    if Config.Misc.SpeedEnabled then
+    if Config.Movement.SpeedEnabled then
         local char = LocalPlayer.Character
         if char then
             local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum then hum.WalkSpeed = Config.Misc.SpeedValue end
+            if hum then hum.WalkSpeed = Config.Movement.SpeedValue end
+        end
+    end
+    if Config.Movement.JumpEnabled then
+        local char = LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then hum.JumpPower = Config.Movement.JumpValue end
         end
     end
 end)
 
 RunService.Stepped:Connect(function()
-    if Config.Misc.NoclipEnabled then
+    if Config.Movement.Noclip then
         local char = LocalPlayer.Character
         if char then
             for _, p in pairs(char:GetDescendants()) do
@@ -846,7 +966,7 @@ RunService.Stepped:Connect(function()
 end)
 
 UserInputService.JumpRequest:Connect(function()
-    if Config.Misc.InfiniteJump then
+    if Config.Movement.InfiniteJump then
         local char = LocalPlayer.Character
         if char then
             local hum = char:FindFirstChildOfClass("Humanoid")
@@ -855,6 +975,18 @@ UserInputService.JumpRequest:Connect(function()
     end
 end)
 
+-- Click TP
+LocalPlayer:GetMouse().Button1Down:Connect(function()
+    if Config.Movement.ClickTP then
+        local target = LocalPlayer:GetMouse().Hit
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            char.HumanoidRootPart.CFrame = CFrame.new(target.Position + Vector3.new(0, 3, 0))
+        end
+    end
+end)
+
+-- Anti-AFK
 LocalPlayer.Idled:Connect(function()
     if Config.Misc.AntiAFK then
         VirtualUser:CaptureController()
@@ -862,11 +994,33 @@ LocalPlayer.Idled:Connect(function()
     end
 end)
 
--- Auto Fish state machine
-local autoState = { phase = "idle", lastCast = 0, castTimeout = 0, lastShake = 0 }
+-- Anti-Fling
+RunService.Heartbeat:Connect(function()
+    if Config.Misc.AntiFling then
+        local char = LocalPlayer.Character
+        if char then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp and hrp.Velocity.Magnitude > 200 then
+                hrp.Velocity = Vector3.zero
+            end
+        end
+    end
+end)
+
+--// ============ AUTO FISH (FIXED) ============
+-- Uses time-based delays + avoids task.wait inside Heartbeat
+local autoFish = {
+    phase = "idle",
+    lastCast = 0,
+    castEnd = 0,
+    lastReel = 0,
+    lastShake = 0,
+}
 
 RunService.Heartbeat:Connect(function()
-    if not Config.Fish.AutoFish then return end
+    local want = Config.Fish.AutoFish or Config.Fish.AutoCast or Config.Fish.AutoReel or Config.Fish.AutoShake
+    if not want then return end
+
     local char = LocalPlayer.Character
     if not char then return end
     local hum = char:FindFirstChildOfClass("Humanoid")
@@ -874,34 +1028,84 @@ RunService.Heartbeat:Connect(function()
 
     local now = os.clock()
 
-    if autoState.phase == "idle" and now - autoState.lastCast >= Config.Fish.CastCooldown then
-        invoke(Remotes.CastAsync)
-        autoState.phase = "casting"
-        autoState.castTimeout = now + 3
-        autoState.lastCast = now
-    elseif autoState.phase == "casting" and now >= autoState.castTimeout then
-        autoState.phase = "reeling"
-    elseif autoState.phase == "reeling" then
-        invoke(Remotes.ReelStart)
-        task.wait(0.2)
-        fire(Remotes.ReelFinish)
-        autoState.phase = "idle"
+    if Config.Fish.AutoFish then
+        if autoFish.phase == "idle" and now - autoFish.lastCast >= Config.Fish.CastCooldown then
+            invoke(Remotes.CastAsync)
+            if not Remotes.CastAsync then invoke(Remotes.CastRod) end
+            autoFish.phase = "waiting"
+            autoFish.castEnd = now + 3
+            autoFish.lastCast = now
+        elseif autoFish.phase == "waiting" and now >= autoFish.castEnd then
+            autoFish.phase = "reeling"
+        elseif autoFish.phase == "reeling" and now - autoFish.lastReel >= Config.Fish.ReelCooldown then
+            invoke(Remotes.ReelStart)
+            autoFish.phase = "finishing"
+            autoFish.lastReel = now
+        elseif autoFish.phase == "finishing" and now - autoFish.lastReel >= 0.2 then
+            fire(Remotes.ReelFinish)
+            autoFish.phase = "idle"
+        end
+        if autoFish.phase == "waiting" and now - autoFish.lastShake >= Config.Fish.ShakeDelay then
+            fire(Remotes.LureShake, Vector2.new(math.random(-100,100), math.random(-100,100)))
+            autoFish.lastShake = now
+        end
     end
 
-    if autoState.phase == "casting" and now - autoState.lastShake >= Config.Fish.ShakeDelay then
-        fire(Remotes.LureShake, Vector2.new(math.random(-100,100), math.random(-100,100)))
-        autoState.lastShake = now
+    if Config.Fish.AutoCast and not Config.Fish.AutoFish then
+        if now - autoFish.lastCast >= Config.Fish.CastCooldown then
+            invoke(Remotes.CastAsync)
+            if not Remotes.CastAsync then invoke(Remotes.CastRod) end
+            autoFish.lastCast = now
+        end
+    end
+    if Config.Fish.AutoReel and not Config.Fish.AutoFish then
+        if now - autoFish.lastReel >= Config.Fish.ReelCooldown then
+            invoke(Remotes.ReelStart)
+            autoFish.lastReel = now
+            task.delay(0.2, function()
+                fire(Remotes.ReelFinish)
+            end)
+        end
+    end
+    if Config.Fish.AutoShake and not Config.Fish.AutoFish then
+        if now - autoFish.lastShake >= Config.Fish.ShakeDelay then
+            fire(Remotes.LureShake, Vector2.new(math.random(-100,100), math.random(-100,100)))
+            autoFish.lastShake = now
+        end
     end
 end)
 
---// ============ COLLAPSE (FIXED) ============
-local minimized = false
+--// ============ ESP UPDATE LOOP ============
+RunService.RenderStepped:Connect(function()
+    for plr, data in pairs(espCache) do
+        if not data.hl or not data.hl.Parent then espCache[plr] = nil continue end
+        local char = plr.Character
+        if char and char:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local dist = math.floor((LocalPlayer.Character.HumanoidRootPart.Position - char.HumanoidRootPart.Position).Magnitude)
+            data.dist.Text = dist .. " studs"
+        end
+        if data.hl then data.hl.Enabled = Config.Visual.PlayerESP end
+        if data.bb then data.bb.Enabled = Config.Visual.Nametags or Config.Visual.PlayerESP end
+    end
+end)
 
+--// ============ GPS UPDATE ============
+RunService.RenderStepped:Connect(function()
+    if Config.Teleport.GPSEnabled and Config.Teleport.GPSTarget and Config.Teleport.GPSTarget.Parent then
+        gpsGui.Enabled = true
+        gpsGui.Adornee = Config.Teleport.GPSTarget
+    else
+        gpsGui.Enabled = false
+    end
+end)
+
+--// ============ COLLAPSE ============
+local minimized = false
 MinBtn.MouseButton1Click:Connect(function()
     minimized = not minimized
     if minimized then
         Main.Size = MINI_SIZE
-        ContentWrap.Visible = false   -- HIDE content
+        ContentWrap.Visible = false
         MinBtn.Text = "+"
     else
         Main.Size = FULL_SIZE
@@ -921,5 +1125,5 @@ for k, v in pairs(Remotes) do
     total = total + 1
     if v then found = found + 1 end
 end
-print("[Popka Hub v4] Loaded -", LocalPlayer.Name)
-print("[Popka Hub v4] Remotes:", found, "/", total)
+print("[Popka Hub v5] Loaded -", LocalPlayer.Name)
+print("[Popka Hub v5] Remotes:", found, "/", total)
